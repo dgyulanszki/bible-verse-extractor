@@ -152,7 +152,7 @@ public class MainViewFactory {
         textColumn.setPrefWidth(780);
 
         tableView.getColumns().setAll(List.of(translationColumn, referenceColumn, textColumn));
-        tableView.setColumnResizePolicy(features -> TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN.call(features));
+        tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         tableView.setPlaceholder(new Label(EMPTY_RESULTS_MESSAGE));
         return tableView;
     }

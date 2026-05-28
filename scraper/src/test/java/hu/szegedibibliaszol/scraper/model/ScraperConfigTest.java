@@ -3,8 +3,7 @@ package hu.szegedibibliaszol.scraper.model;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ScraperConfigTest {
 
@@ -14,7 +13,7 @@ class ScraperConfigTest {
 
         assertEquals(Path.of("verses.db"), config.outputDatabasePath());
         assertEquals(500, config.requestDelayMillis());
-        assertEquals(true, config.staticScrapingEnabled());
+        assertTrue(config.staticScrapingEnabled());
         assertFalse(config.dynamicScrapingEnabled());
     }
 }
