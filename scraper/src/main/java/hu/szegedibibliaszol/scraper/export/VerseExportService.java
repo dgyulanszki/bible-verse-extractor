@@ -19,13 +19,15 @@ public class VerseExportService {
             throw new IllegalStateException("Could not create export directory for SQLite database.", ex);
         }
 
+        List<VerseRecord> uniqueVerses = verses.stream().distinct().toList();
         String jdbcUrl = "jdbc:sqlite:" + databasePath;
         try (Connection connection = openConnection(jdbcUrl)) {
             connection.createStatement().execute(createTableSql());
-            connection.createStatement().execute("delete from verses");
+            connection.createStatement().execute(removeDuplicateRowsSql());
+            connection.createStatement().execute(createUniqueIndexSql());
 
             try (PreparedStatement statement = connection.prepareStatement(createInsertSql())) {
-                for (VerseRecord verse : verses) {
+                for (VerseRecord verse : uniqueVerses) {
                     statement.setString(1, verse.translation());
                     statement.setString(2, verse.book());
                     statement.setInt(3, verse.chapter());
@@ -65,8 +67,26 @@ public class VerseExportService {
 
     protected String createInsertSql() {
         return """
-                insert into verses (translation, book, chapter, verse, text)
+                insert or ignore into verses (translation, book, chapter, verse, text)
                 values (?, ?, ?, ?, ?)
+                """;
+    }
+
+    protected String removeDuplicateRowsSql() {
+        return """
+                delete from verses
+                where id not in (
+                    select min(id)
+                    from verses
+                    group by translation, book, chapter, verse, text
+                )
+                """;
+    }
+
+    protected String createUniqueIndexSql() {
+        return """
+                create unique index if not exists verses_unique_reference_and_text
+                on verses (translation, book, chapter, verse, text)
                 """;
     }
 }

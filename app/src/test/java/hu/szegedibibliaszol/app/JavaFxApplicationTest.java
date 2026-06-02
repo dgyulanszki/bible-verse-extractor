@@ -129,5 +129,3 @@ class JavaFxApplicationTest {
         }
     }
 }
-
-

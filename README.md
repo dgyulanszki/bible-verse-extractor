@@ -37,6 +37,12 @@ Desktop application starter.
 .\mvnw -pl app spring-boot:run
 ```
 
+## Default SQLite database location
+
+- By default, both modules now use a shared SQLite file at `${user.home}/bible-verses.db`.
+- You can override the desktop app path with the `BIBLE_VERSE_DB_PATH` environment variable.
+- You can override the scraper output path with the `scraper.outputDatabasePath` JVM system property.
+
 ## Packaging note
 
 The `app` module is prepared as a desktop starter and can later be extended with a `jpackage`-based packaging profile for a portable Windows EXE.

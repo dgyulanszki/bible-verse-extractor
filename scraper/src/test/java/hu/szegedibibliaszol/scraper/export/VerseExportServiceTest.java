@@ -46,6 +46,44 @@ class VerseExportServiceTest {
     }
 
     @Test
+    void doesNotInsertDuplicateVersesFromTheSameBatch() throws Exception {
+        Path tempDirectory = Files.createTempDirectory("verse-export-duplicate-batch-test");
+        Path databasePath = tempDirectory.resolve("verses.db");
+        VerseRecord duplicateVerse = new VerseRecord("KAR", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet.");
+
+        new VerseExportService().exportToSqlite(databasePath, List.of(duplicateVerse, duplicateVerse));
+
+        assertEquals(1, queryVerseCount(databasePath));
+    }
+
+    @Test
+    void preservesExistingDifferentVersesAndSkipsMatchingDuplicates() throws Exception {
+        Path tempDirectory = Files.createTempDirectory("verse-export-preserve-test");
+        Path databasePath = tempDirectory.resolve("verses.db");
+        VerseExportService verseExportService = new VerseExportService();
+        VerseRecord verseOne = new VerseRecord("KAR", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet.");
+        VerseRecord verseTwo = new VerseRecord("KAR", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.");
+
+        verseExportService.exportToSqlite(databasePath, List.of(verseOne));
+        verseExportService.exportToSqlite(databasePath, List.of(verseOne, verseTwo));
+
+        assertEquals(2, queryVerseCount(databasePath));
+    }
+
+    @Test
+    void removesExistingDuplicateRowsBeforeCreatingUniqueIndex() throws Exception {
+        Path tempDirectory = Files.createTempDirectory("verse-export-deduplicate-existing-test");
+        Path databasePath = tempDirectory.resolve("verses.db");
+        VerseRecord verse = new VerseRecord("KAR", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet.");
+
+        createDatabaseWithDuplicateRows(databasePath, verse);
+
+        new VerseExportService().exportToSqlite(databasePath, List.of());
+
+        assertEquals(1, queryVerseCount(databasePath));
+    }
+
+    @Test
     void wrapsDirectoryCreationFailure() {
         VerseExportService verseExportService = new VerseExportService() {
             @Override
@@ -86,6 +124,35 @@ class VerseExportServiceTest {
             resultSet.next();
             return resultSet.getInt(1);
         }
+    }
+
+    private void createDatabaseWithDuplicateRows(Path databasePath, VerseRecord verse) throws Exception {
+        Files.createDirectories(databasePath.getParent());
+
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    create table verses (
+                        id integer primary key autoincrement,
+                        translation text not null,
+                        book text not null,
+                        chapter integer not null,
+                        verse integer not null,
+                        text text not null
+                    )
+                    """);
+            statement.execute(insertVerseSql(verse));
+            statement.execute(insertVerseSql(verse));
+        }
+    }
+
+    private String insertVerseSql(VerseRecord verse) {
+        return "insert into verses (translation, book, chapter, verse, text) values ('"
+                + verse.translation().replace("'", "''") + "', '"
+                + verse.book().replace("'", "''") + "', "
+                + verse.chapter() + ", "
+                + verse.verse() + ", '"
+                + verse.text().replace("'", "''") + "')";
     }
 }
 

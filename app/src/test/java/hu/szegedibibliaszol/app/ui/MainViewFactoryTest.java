@@ -3,6 +3,7 @@ package hu.szegedibibliaszol.app.ui;
 import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.testutil.FxTestSupport;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
+import java.util.List;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -29,44 +30,53 @@ class MainViewFactoryTest {
 
     @Test
     void createRootBuildsBaseUiAndUpdatesStatusMessages() {
-        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService());
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet."),
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
+        )));
 
         FxTestSupport.runOnFxThread(() -> {
             Parent parent = mainViewFactory.createRoot();
             BorderPane root = (BorderPane) parent;
             VBox header = (VBox) root.getTop();
             HBox filters = (HBox) header.getChildren().get(2);
-            ComboBox<String> translationBox = (ComboBox<String>) filters.getChildren().get(0);
-            ComboBox<String> bookBox = (ComboBox<String>) filters.getChildren().get(1);
-            ComboBox<Integer> chapterBox = (ComboBox<Integer>) filters.getChildren().get(2);
-            ComboBox<Integer> verseBox = (ComboBox<Integer>) filters.getChildren().get(3);
+            ComboBox<String> translationBox = comboBox(filters, 0);
+            ComboBox<String> bookBox = comboBox(filters, 1);
+            ComboBox<Integer> chapterBox = comboBox(filters, 2);
+            ComboBox<Integer> verseBox = comboBox(filters, 3);
             Button resetButton = (Button) filters.getChildren().get(4);
             Label statusLabel = (Label) header.getChildren().get(3);
-            TableView<VerseRow> tableView = (TableView<VerseRow>) root.getCenter();
+            TableView<VerseRow> tableView = tableView(root);
 
             assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getText());
             assertEquals("Translation", translationBox.getPromptText());
             assertEquals("Book", bookBox.getPromptText());
             assertEquals("Chapter", chapterBox.getPromptText());
             assertEquals("Verse", verseBox.getPromptText());
-            assertTrue(translationBox.getItems().isEmpty());
+            assertEquals(List.of("Revideált Károli"), translationBox.getItems());
             assertEquals(MainViewFactory.EMPTY_RESULTS_MESSAGE, ((Label) tableView.getPlaceholder()).getText());
 
-            translationBox.setValue("KJV");
+            translationBox.setValue("Revideált Károli");
             assertEquals("Translation selected. Now choose a book.", statusLabel.getText());
+            assertEquals(List.of("1. Mózes"), bookBox.getItems());
 
-            bookBox.setValue("John");
+            bookBox.setValue("1. Mózes");
             assertEquals("Book selected. Choose a chapter.", statusLabel.getText());
+            assertEquals(List.of(1), chapterBox.getItems());
 
-            chapterBox.setValue(3);
+            chapterBox.setValue(1);
             assertEquals("Chapter selected. You can refine to a specific verse or inspect the full chapter below.", statusLabel.getText());
-            assertTrue(tableView.getItems().isEmpty());
+            assertEquals(List.of(1, 2), verseBox.getItems());
+            assertEquals(2, tableView.getItems().size());
 
-            verseBox.setValue(16);
+            verseBox.setValue(2);
             assertEquals("Displaying the selected verse.", statusLabel.getText());
+            assertEquals(1, tableView.getItems().size());
+            assertEquals("A föld pedig kietlen és puszta volt.", tableView.getItems().get(0).text());
 
             verseBox.setValue(null);
             assertEquals("Displaying all verses in the selected chapter.", statusLabel.getText());
+            assertEquals(2, tableView.getItems().size());
 
             resetButton.fire();
             assertNull(translationBox.getValue());
@@ -81,7 +91,7 @@ class MainViewFactoryTest {
 
     @Test
     void createHelpAlertUsesExpectedContent() {
-        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService());
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
 
         FxTestSupport.runOnFxThread(() -> {
             Alert alert = mainViewFactory.createHelpAlert();
@@ -93,5 +103,14 @@ class MainViewFactoryTest {
             return null;
         });
     }
-}
 
+    @SuppressWarnings("unchecked")
+    private <T> ComboBox<T> comboBox(HBox filters, int index) {
+        return (ComboBox<T>) filters.getChildren().get(index);
+    }
+
+    @SuppressWarnings("unchecked")
+    private TableView<VerseRow> tableView(BorderPane root) {
+        return (TableView<VerseRow>) root.getCenter();
+    }
+}

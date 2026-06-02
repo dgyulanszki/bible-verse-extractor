@@ -14,4 +14,3 @@ public class BibleVerseAppApplication {
         Application.launch(JavaFxApplication.class, args);
     }
 }
-

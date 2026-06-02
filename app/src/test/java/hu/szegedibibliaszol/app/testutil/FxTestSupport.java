@@ -76,5 +76,3 @@ public final class FxTestSupport {
         }
     }
 }
-
-

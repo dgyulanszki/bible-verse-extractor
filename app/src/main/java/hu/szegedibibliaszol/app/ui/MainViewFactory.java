@@ -23,9 +23,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class MainViewFactory {
 
-    static final String INITIAL_STATUS_MESSAGE = "The verse browser is wired, but no concrete data source is implemented yet.";
-    static final String EMPTY_RESULTS_MESSAGE = "No verses available. Add the concrete implementation to populate results.";
-    static final String HELP_HEADER_TEXT = "How to use the starter app frame";
+    static final String INITIAL_STATUS_MESSAGE = "Choose a translation to browse the verses stored in the shared Bible database.";
+    static final String EMPTY_RESULTS_MESSAGE = "No verses found in the database for the current selection.";
+    static final String HELP_HEADER_TEXT = "How to use the verse browser";
 
     private final VerseBrowserService verseBrowserService;
 
@@ -116,7 +116,7 @@ public class MainViewFactory {
         Label titleLabel = new Label("Bible Verse Tool");
         titleLabel.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
 
-        Label subtitleLabel = new Label("Base desktop frame with dynamic selectors, verse table, and diagnostics area.");
+        Label subtitleLabel = new Label("Browse verses from the shared Bible database with translation, book, chapter, and verse filters.");
 
         VBox header = new VBox(6, titleLabel, subtitleLabel, filters, statusLabel);
         header.setPadding(new Insets(16));
@@ -166,9 +166,6 @@ public class MainViewFactory {
     }
 
     String helpContentText() {
-        return "This frame only provides the UI shell. "
-                + "Populate the selectors and table by connecting the service layer to the real SQLite-backed implementation.";
+        return "Run the scraper first to populate the shared Bible database, then use the selectors to browse the stored verses.";
     }
 }
-
-

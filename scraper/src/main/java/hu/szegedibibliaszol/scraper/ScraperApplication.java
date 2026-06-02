@@ -12,7 +12,11 @@ import org.slf4j.LoggerFactory;
 
 public class ScraperApplication {
 
-	private static final Path DEFAULT_DATABASE_PATH = Path.of("target", "scraper-output", "bible-verses.db");
+	private static final Path DEFAULT_DATABASE_PATH = Path.of(System.getProperty("user.home"), "bible-verses.db");
+	private static final String OUTPUT_DATABASE_PATH_PROPERTY = "scraper.outputDatabasePath";
+	private static final String REQUEST_DELAY_PROPERTY = "scraper.requestDelayMillis";
+	private static final String STATIC_ENABLED_PROPERTY = "scraper.staticScrapingEnabled";
+	private static final String DYNAMIC_ENABLED_PROPERTY = "scraper.dynamicScrapingEnabled";
 
 	private static final Logger log = LoggerFactory.getLogger(ScraperApplication.class);
 
@@ -30,7 +34,12 @@ public class ScraperApplication {
 	}
 
 	static ScraperConfig createDefaultConfig() {
-		return new ScraperConfig(DEFAULT_DATABASE_PATH, 250, true, true);
+		Path outputDatabasePath = Path.of(System.getProperty(OUTPUT_DATABASE_PATH_PROPERTY, DEFAULT_DATABASE_PATH.toString()));
+		long requestDelayMillis = Long.parseLong(System.getProperty(REQUEST_DELAY_PROPERTY, "250"));
+		boolean staticScrapingEnabled = Boolean.parseBoolean(System.getProperty(STATIC_ENABLED_PROPERTY, "true"));
+		boolean dynamicScrapingEnabled = Boolean.parseBoolean(System.getProperty(DYNAMIC_ENABLED_PROPERTY, "true"));
+
+		return new ScraperConfig(outputDatabasePath, requestDelayMillis, staticScrapingEnabled, dynamicScrapingEnabled);
 	}
 
 	static ScraperCoordinator createCoordinator(ScraperConfig config) {
