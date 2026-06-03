@@ -83,7 +83,7 @@ class VerseBrowserServiceTest {
     void databaseBackedQueriesReadDistinctFilteredData() throws Exception {
         Path databasePath = Files.createTempFile("verse-browser-service", ".db");
         VersesRepository versesRepository = mock(VersesRepository.class);
-        when(versesRepository.findTranslations()).thenReturn(List.of("Revideált Károli", "Károli Gáspár Fordítás"));
+        when(versesRepository.findTranslations()).thenReturn(List.of("Revideált Károli", "Károli"));
         when(versesRepository.findBooksByTranslation("Revideált Károli")).thenReturn(List.of("1. Mózes", "2. Mózes"));
         when(versesRepository.findChaptersByTranslationAndBook("Revideált Károli", "1. Mózes")).thenReturn(List.of(1));
         when(versesRepository.findVersesByTranslationAndBookAndChapter("Revideált Károli", "1. Mózes", 1)).thenReturn(List.of(1, 2));
@@ -97,7 +97,7 @@ class VerseBrowserServiceTest {
 
         VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
 
-        assertEquals(List.of("Revideált Károli", "Károli Gáspár Fordítás"), verseBrowserService.getTranslations());
+        assertEquals(List.of("Revideált Károli", "Károli"), verseBrowserService.getTranslations());
         assertEquals(List.of("1. Mózes", "2. Mózes"), verseBrowserService.getBooks("Revideált Károli"));
         assertEquals(List.of(1), verseBrowserService.getChapters("Revideált Károli", "1. Mózes"));
         assertEquals(List.of(1, 2), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", 1));
@@ -140,6 +140,20 @@ class VerseBrowserServiceTest {
         assertEquals(List.of(), verseBrowserService.getChapters("Revideált Károli", "1. Mózes"));
         assertEquals(List.of(), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", 1));
         assertEquals(List.of(), verseBrowserService.findVerses("Revideált Károli", "1. Mózes", 1, null));
+    }
+
+    @Test
+    void databaseBackedQueriesReturnEmptyListsWhenVersesTableIsMissingInNestedCause() throws Exception {
+        Path databasePath = Files.createTempFile("verse-browser-service-nested-missing-table", ".db");
+        VersesRepository versesRepository = mock(VersesRepository.class);
+        when(versesRepository.findTranslations()).thenThrow(new RuntimeException(
+                "wrapper",
+                new RuntimeException("no such table: verses")
+        ));
+
+        VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
+
+        assertEquals(List.of(), verseBrowserService.getTranslations());
     }
 
     @Test

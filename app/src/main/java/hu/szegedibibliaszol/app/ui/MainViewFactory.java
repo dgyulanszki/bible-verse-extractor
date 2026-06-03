@@ -11,6 +11,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
@@ -41,10 +42,10 @@ public class MainViewFactory {
         Label statusLabel = new Label(INITIAL_STATUS_MESSAGE);
         TableView<VerseRow> tableView = createTableView();
 
-        translationBox.setPromptText("Translation");
-        bookBox.setPromptText("Book");
-        chapterBox.setPromptText("Chapter");
-        verseBox.setPromptText("Verse");
+        configurePlaceholderDisplay(translationBox, "Translation");
+        configurePlaceholderDisplay(bookBox, "Book");
+        configurePlaceholderDisplay(chapterBox, "Chapter");
+        configurePlaceholderDisplay(verseBox, "Verse");
 
         translationBox.setItems(FXCollections.observableArrayList(verseBrowserService.getTranslations()));
 
@@ -107,7 +108,7 @@ public class MainViewFactory {
             verseBox.getItems().clear();
             verseBox.setValue(null);
             tableView.getItems().clear();
-            statusLabel.setText("Selections cleared. Choose a translation to begin again.");
+            statusLabel.setText(INITIAL_STATUS_MESSAGE);
         });
 
         HBox filters = new HBox(12, translationBox, bookBox, chapterBox, verseBox, resetButton, helpButton);
@@ -167,5 +168,22 @@ public class MainViewFactory {
 
     String helpContentText() {
         return "Run the scraper first to populate the shared Bible database, then use the selectors to browse the stored verses.";
+    }
+
+    private <T> void configurePlaceholderDisplay(ComboBox<T> comboBox, String placeholderText) {
+        comboBox.setPromptText(placeholderText);
+
+        ListCell<T> buttonCell = new ListCell<>() {
+            @Override
+            protected void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? placeholderText : String.valueOf(item));
+            }
+        };
+        buttonCell.setText(placeholderText);
+        comboBox.valueProperty().addListener((_, _, newValue) -> buttonCell.setText(
+                newValue == null ? placeholderText : String.valueOf(newValue)
+        ));
+        comboBox.setButtonCell(buttonCell);
     }
 }

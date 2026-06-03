@@ -1,12 +1,16 @@
 package hu.szegedibibliaszol.scraper;
 
 import hu.szegedibibliaszol.scraper.model.ScraperConfig;
+import hu.szegedibibliaszol.scraper.service.AbstractDynamicSiteScraper;
+import hu.szegedibibliaszol.scraper.service.AbstractStaticSiteScraper;
 import hu.szegedibibliaszol.scraper.service.ScraperCoordinator;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,6 +26,8 @@ class ScraperApplicationTest {
   private static final String REQUEST_DELAY_PROPERTY = "scraper.requestDelayMillis";
   private static final String STATIC_ENABLED_PROPERTY = "scraper.staticScrapingEnabled";
   private static final String DYNAMIC_ENABLED_PROPERTY = "scraper.dynamicScrapingEnabled";
+  private static final String STATIC_TRANSLATIONS_PROPERTY = "scraper.staticTranslations";
+  private static final String DYNAMIC_TRANSLATIONS_PROPERTY = "scraper.dynamicTranslations";
 
     @Test
     void createDefaultConfigUsesExpectedValues() {
@@ -30,6 +36,8 @@ class ScraperApplicationTest {
         "250",
         "true",
         "true",
+        "all",
+        "all",
         () -> {
           ScraperConfig config = ScraperApplication.createDefaultConfig();
 
@@ -37,17 +45,68 @@ class ScraperApplicationTest {
           assertEquals(250, config.requestDelayMillis());
           assertTrue(config.staticScrapingEnabled());
           assertTrue(config.dynamicScrapingEnabled());
+          assertEquals(List.of("all"), config.staticTranslations());
+          assertEquals(List.of("all"), config.dynamicTranslations());
         }
     );
     }
 
     @Test
-    void createCoordinatorBuildsCoordinator() {
+    void createDefaultConfigParsesSelectedStaticTranslations() {
+    withScraperProperties(
+        DEFAULT_DATABASE_PATH.toString(),
+        "250",
+        "true",
+        "false",
+        "revidealt-karoli, karoli-gaspar, revidealt-uj-forditas",
+        "efo",
+        () -> {
+          ScraperConfig config = ScraperApplication.createDefaultConfig();
+
+          assertEquals(List.of("revidealt-karoli", "karoli-gaspar", "revidealt-uj-forditas"), config.staticTranslations());
+          assertEquals(List.of("efo"), config.dynamicTranslations());
+        }
+    );
+    }
+
+    @Test
+    void createDefaultConfigIgnoresBlankStaticTranslationEntries() {
+    withScraperProperties(
+        DEFAULT_DATABASE_PATH.toString(),
+        "250",
+        "true",
+        "false",
+        " revidealt-karoli, , karoli-gaspar ,, revidealt-uj-forditas ",
+        " efo, , niv ,, kjv ",
+        () -> {
+          ScraperConfig config = ScraperApplication.createDefaultConfig();
+
+          assertEquals(List.of("revidealt-karoli", "karoli-gaspar", "revidealt-uj-forditas"), config.staticTranslations());
+          assertEquals(List.of("efo", "niv", "kjv"), config.dynamicTranslations());
+        }
+    );
+    }
+
+    @Test
+    void createCoordinatorBuildsCoordinator() throws Exception {
         ScraperCoordinator coordinator = ScraperApplication.createCoordinator(
-                new ScraperConfig(Path.of("target", "custom.db"), 0, false, false)
+                new ScraperConfig(Path.of("target", "custom.db"), 0, false, false, List.of("all"), List.of("all"))
         );
 
+        Field staticSiteScrapersField = ScraperCoordinator.class.getDeclaredField("staticSiteScrapers");
+        staticSiteScrapersField.setAccessible(true);
+        Field dynamicSiteScrapersField = ScraperCoordinator.class.getDeclaredField("dynamicSiteScrapers");
+        dynamicSiteScrapersField.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<AbstractStaticSiteScraper> staticSiteScrapers = (List<AbstractStaticSiteScraper>) staticSiteScrapersField.get(coordinator);
+        @SuppressWarnings("unchecked")
+        List<AbstractDynamicSiteScraper> dynamicSiteScrapers = (List<AbstractDynamicSiteScraper>) dynamicSiteScrapersField.get(coordinator);
+
         assertNotNull(coordinator);
+        assertEquals(List.of("revidealt-karoli", "karoli-gaspar", "revidealt-uj-forditas"),
+                staticSiteScrapers.stream().map(AbstractStaticSiteScraper::id).toList());
+        assertEquals(List.of("efo"), dynamicSiteScrapers.stream().map(AbstractDynamicSiteScraper::id).toList());
     }
 
     @Test
@@ -60,6 +119,8 @@ class ScraperApplicationTest {
         "0",
         "false",
         "false",
+        "all",
+        "all",
         () -> {
           ScraperApplication.main(new String[0]);
           assertTrue(Files.exists(databasePath));
@@ -82,18 +143,24 @@ class ScraperApplicationTest {
       String requestDelayMillis,
       String staticScrapingEnabled,
       String dynamicScrapingEnabled,
+      String staticTranslations,
+      String dynamicTranslations,
       ThrowingRunnable action
   ) {
     String previousOutputDatabasePath = System.getProperty(OUTPUT_DATABASE_PATH_PROPERTY);
     String previousRequestDelay = System.getProperty(REQUEST_DELAY_PROPERTY);
     String previousStaticEnabled = System.getProperty(STATIC_ENABLED_PROPERTY);
     String previousDynamicEnabled = System.getProperty(DYNAMIC_ENABLED_PROPERTY);
+    String previousStaticTranslations = System.getProperty(STATIC_TRANSLATIONS_PROPERTY);
+    String previousDynamicTranslations = System.getProperty(DYNAMIC_TRANSLATIONS_PROPERTY);
 
     try {
       System.setProperty(OUTPUT_DATABASE_PATH_PROPERTY, outputDatabasePath);
       System.setProperty(REQUEST_DELAY_PROPERTY, requestDelayMillis);
       System.setProperty(STATIC_ENABLED_PROPERTY, staticScrapingEnabled);
       System.setProperty(DYNAMIC_ENABLED_PROPERTY, dynamicScrapingEnabled);
+      System.setProperty(STATIC_TRANSLATIONS_PROPERTY, staticTranslations);
+      System.setProperty(DYNAMIC_TRANSLATIONS_PROPERTY, dynamicTranslations);
       action.run();
     } catch (Exception ex) {
       throw new IllegalStateException("Test setup failed.", ex);
@@ -102,6 +169,8 @@ class ScraperApplicationTest {
       restoreProperty(REQUEST_DELAY_PROPERTY, previousRequestDelay);
       restoreProperty(STATIC_ENABLED_PROPERTY, previousStaticEnabled);
       restoreProperty(DYNAMIC_ENABLED_PROPERTY, previousDynamicEnabled);
+      restoreProperty(STATIC_TRANSLATIONS_PROPERTY, previousStaticTranslations);
+      restoreProperty(DYNAMIC_TRANSLATIONS_PROPERTY, previousDynamicTranslations);
     }
   }
 

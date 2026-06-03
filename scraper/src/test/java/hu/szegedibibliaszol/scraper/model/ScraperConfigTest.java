@@ -1,20 +1,56 @@
 package hu.szegedibibliaszol.scraper.model;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScraperConfigTest {
 
     @Test
     void recordExposesConfiguredValues() {
-        ScraperConfig config = new ScraperConfig(Path.of("verses.db"), 500, true, false);
+        ScraperConfig config = new ScraperConfig(
+                Path.of("verses.db"),
+                500,
+                true,
+                false,
+                List.of("revidealt-karoli"),
+                List.of("efo")
+        );
 
         assertEquals(Path.of("verses.db"), config.outputDatabasePath());
         assertEquals(500, config.requestDelayMillis());
         assertTrue(config.staticScrapingEnabled());
         assertFalse(config.dynamicScrapingEnabled());
+        assertEquals(List.of("revidealt-karoli"), config.staticTranslations());
+        assertEquals(List.of("efo"), config.dynamicTranslations());
+    }
+
+    @Test
+    void recordDefensivelyCopiesTranslationSelections() {
+        List<String> configuredStaticTranslations = new ArrayList<>(List.of("all"));
+        List<String> configuredDynamicTranslations = new ArrayList<>(List.of("efo"));
+
+        ScraperConfig config = new ScraperConfig(
+                Path.of("verses.db"),
+                500,
+                true,
+                false,
+                configuredStaticTranslations,
+                configuredDynamicTranslations
+        );
+        configuredStaticTranslations.add("karoli-gaspar");
+        configuredDynamicTranslations.add("niv");
+
+        assertEquals(List.of("all"), config.staticTranslations());
+        assertEquals(List.of("efo"), config.dynamicTranslations());
+        assertThrows(UnsupportedOperationException.class, () -> config.staticTranslations().add("karoli-gaspar"));
+        assertThrows(UnsupportedOperationException.class, () -> config.dynamicTranslations().add("niv"));
     }
 }
 

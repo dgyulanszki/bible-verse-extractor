@@ -14,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class StaticSiteScraperTest {
+class StaticRevidealtKaroliScraperTest {
 
     @Test
     void scrapeTraversesBooksChaptersAndVerses() {
-        TestStaticSiteScraper staticSiteScraper = new TestStaticSiteScraper(Map.ofEntries(
+        TestStaticRevidealtKaroliScraper staticSiteScraper = new TestStaticRevidealtKaroliScraper(Map.ofEntries(
                 Map.entry("https://www.online-biblia.ro/bible/4", document("""
                         <html><body>
                         <a href="/bible/4/GEN">1. Mózes</a>
@@ -86,7 +86,7 @@ class StaticSiteScraperTest {
 
     @Test
     void scrapeWrapsDocumentLoadingFailures() {
-        StaticSiteScraper staticSiteScraper = new StaticSiteScraper() {
+        StaticRevidealtKaroliScraper staticSiteScraper = new StaticRevidealtKaroliScraper() {
             @Override
             protected Document readDocument(String url) throws IOException {
                 throw new IOException("boom");
@@ -101,7 +101,7 @@ class StaticSiteScraperTest {
 
     @Test
     void scrapeFailsWhenVerseContainerIsMissing() {
-        TestStaticSiteScraper staticSiteScraper = new TestStaticSiteScraper(Map.of(
+        TestStaticRevidealtKaroliScraper staticSiteScraper = new TestStaticRevidealtKaroliScraper(Map.of(
                 "https://www.online-biblia.ro/bible/4", document("<a href=\"/bible/4/GEN\">1. Mózes</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN", document("<a href=\"/bible/4/GEN/1\">1</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN/1", document("<html><body>missing content</body></html>")
@@ -114,7 +114,7 @@ class StaticSiteScraperTest {
 
     @Test
     void scrapeFailsWhenVerseTextIsMissing() {
-        TestStaticSiteScraper staticSiteScraper = new TestStaticSiteScraper(Map.of(
+        TestStaticRevidealtKaroliScraper staticSiteScraper = new TestStaticRevidealtKaroliScraper(Map.of(
                 "https://www.online-biblia.ro/bible/4", document("<a href=\"/bible/4/GEN\">1. Mózes</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN", document("<a href=\"/bible/4/GEN/1\">1</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN/1", document("""
@@ -132,7 +132,7 @@ class StaticSiteScraperTest {
 
     @Test
     void scrapeFailsWhenVerseNumberCannotBeParsed() {
-        TestStaticSiteScraper staticSiteScraper = new TestStaticSiteScraper(Map.of(
+        TestStaticRevidealtKaroliScraper staticSiteScraper = new TestStaticRevidealtKaroliScraper(Map.of(
                 "https://www.online-biblia.ro/bible/4", document("<a href=\"/bible/4/GEN\">1. Mózes</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN", document("<a href=\"/bible/4/GEN/1\">1</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN/1", document("""
@@ -151,7 +151,7 @@ class StaticSiteScraperTest {
 
     @Test
     void scrapeFailsWhenBookChapterCannotBeParsed() {
-        TestStaticSiteScraper staticSiteScraper = new TestStaticSiteScraper(Map.of(
+        TestStaticRevidealtKaroliScraper staticSiteScraper = new TestStaticRevidealtKaroliScraper(Map.of(
                 "https://www.online-biblia.ro/bible/4", document("<a href=\"/bible/4/GEN\">1. Mózes</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN", document("<a href=\"/bible/4/GEN/ABC\">ABC</a>")
         ));
@@ -167,7 +167,7 @@ class StaticSiteScraperTest {
 
     @Test
     void scrapeFailsWhenVerseTextIsBlank() {
-        TestStaticSiteScraper staticSiteScraper = new TestStaticSiteScraper(Map.of(
+        TestStaticRevidealtKaroliScraper staticSiteScraper = new TestStaticRevidealtKaroliScraper(Map.of(
                 "https://www.online-biblia.ro/bible/4", document("<a href=\"/bible/4/GEN\">1. Mózes</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN", document("<a href=\"/bible/4/GEN/1\">1</a>"),
                 "https://www.online-biblia.ro/bible/4/GEN/1", document("""
@@ -187,12 +187,12 @@ class StaticSiteScraperTest {
         return Jsoup.parse(html, "https://www.online-biblia.ro");
     }
 
-    private static final class TestStaticSiteScraper extends StaticSiteScraper {
+    private static final class TestStaticRevidealtKaroliScraper extends StaticRevidealtKaroliScraper {
 
         private final Map<String, Document> documents;
         private final List<String> visitedUrls = new ArrayList<>();
 
-        private TestStaticSiteScraper(Map<String, Document> documents) {
+        private TestStaticRevidealtKaroliScraper(Map<String, Document> documents) {
             this.documents = new HashMap<>(documents);
         }
 
@@ -211,4 +211,5 @@ class StaticSiteScraperTest {
         }
     }
 }
+
 

@@ -5,17 +5,21 @@ import hu.szegedibibliaszol.app.testutil.FxTestSupport;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.util.List;
 import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -53,26 +57,37 @@ class MainViewFactoryTest {
             assertEquals("Book", bookBox.getPromptText());
             assertEquals("Chapter", chapterBox.getPromptText());
             assertEquals("Verse", verseBox.getPromptText());
+            assertEquals("Translation", translationBox.getButtonCell().getText());
+            assertEquals("Book", bookBox.getButtonCell().getText());
+            assertEquals("Chapter", chapterBox.getButtonCell().getText());
+            assertEquals("Verse", verseBox.getButtonCell().getText());
             assertEquals(List.of("Revideált Károli"), translationBox.getItems());
             assertEquals(MainViewFactory.EMPTY_RESULTS_MESSAGE, ((Label) tableView.getPlaceholder()).getText());
 
             translationBox.setValue("Revideált Károli");
             assertEquals("Translation selected. Now choose a book.", statusLabel.getText());
+            assertEquals("Revideált Károli", translationBox.getButtonCell().getText());
             assertEquals(List.of("1. Mózes"), bookBox.getItems());
 
             bookBox.setValue("1. Mózes");
             assertEquals("Book selected. Choose a chapter.", statusLabel.getText());
+            assertEquals("1. Mózes", bookBox.getButtonCell().getText());
             assertEquals(List.of(1), chapterBox.getItems());
 
             chapterBox.setValue(1);
             assertEquals("Chapter selected. You can refine to a specific verse or inspect the full chapter below.", statusLabel.getText());
+            assertEquals("1", chapterBox.getButtonCell().getText());
             assertEquals(List.of(1, 2), verseBox.getItems());
             assertEquals(2, tableView.getItems().size());
 
             verseBox.setValue(2);
             assertEquals("Displaying the selected verse.", statusLabel.getText());
+            assertEquals("2", verseBox.getButtonCell().getText());
             assertEquals(1, tableView.getItems().size());
             assertEquals("A föld pedig kietlen és puszta volt.", tableView.getItems().get(0).text());
+            assertEquals("Revideált Károli", columnValue(tableView, 0, 0));
+            assertEquals("1. Mózes 1:2", columnValue(tableView, 1, 0));
+            assertEquals("A föld pedig kietlen és puszta volt.", columnValue(tableView, 2, 0));
 
             verseBox.setValue(null);
             assertEquals("Displaying all verses in the selected chapter.", statusLabel.getText());
@@ -83,8 +98,12 @@ class MainViewFactoryTest {
             assertTrue(bookBox.getItems().isEmpty());
             assertTrue(chapterBox.getItems().isEmpty());
             assertTrue(verseBox.getItems().isEmpty());
+            assertEquals("Translation", translationBox.getButtonCell().getText());
+            assertEquals("Book", bookBox.getButtonCell().getText());
+            assertEquals("Chapter", chapterBox.getButtonCell().getText());
+            assertEquals("Verse", verseBox.getButtonCell().getText());
             assertSame(root.getCenter(), tableView);
-            assertEquals("Selections cleared. Choose a translation to begin again.", statusLabel.getText());
+            assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getText());
             return null;
         });
     }
@@ -104,6 +123,26 @@ class MainViewFactoryTest {
         });
     }
 
+    @Test
+    void createRootCanBeShownInStage() {
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben.")
+        )));
+
+        FxTestSupport.runOnFxThread(() -> {
+            Stage stage = new Stage();
+            try {
+                assertDoesNotThrow(() -> {
+                    stage.setScene(new Scene(mainViewFactory.createRoot(), 1180, 760));
+                    stage.show();
+                });
+            } finally {
+                stage.close();
+            }
+            return null;
+        });
+    }
+
     @SuppressWarnings("unchecked")
     private <T> ComboBox<T> comboBox(HBox filters, int index) {
         return (ComboBox<T>) filters.getChildren().get(index);
@@ -112,5 +151,10 @@ class MainViewFactoryTest {
     @SuppressWarnings("unchecked")
     private TableView<VerseRow> tableView(BorderPane root) {
         return (TableView<VerseRow>) root.getCenter();
+    }
+
+    private Object columnValue(TableView<VerseRow> tableView, int columnIndex, int rowIndex) {
+        TableColumn<VerseRow, ?> tableColumn = tableView.getColumns().get(columnIndex);
+        return tableColumn.getCellObservableValue(rowIndex).getValue();
     }
 }
