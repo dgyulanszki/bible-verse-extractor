@@ -31,6 +31,9 @@ public class JavaFxApplication extends Application {
 
     @Override
     public void stop() {
+        if (context != null) {
+            requireContext().getBean(MainViewFactory.class).saveCurrentSession();
+        }
         closeContext();
         Platform.exit();
     }
@@ -46,7 +49,7 @@ public class JavaFxApplication extends Application {
     }
 
     void configureStage(Stage stage, Scene scene) {
-        stage.setTitle("Bible Verse Tool");
+        stage.setTitle(MainViewFactory.APPLICATION_TITLE);
         stage.setScene(scene);
         stage.setMinWidth(MINIMUM_WIDTH);
         stage.setMinHeight(MINIMUM_HEIGHT);

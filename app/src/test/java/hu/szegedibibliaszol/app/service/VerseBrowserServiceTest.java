@@ -25,6 +25,7 @@ class VerseBrowserServiceTest {
         assertTrue(verseBrowserService.getChapters("KJV", "John").isEmpty());
         assertTrue(verseBrowserService.getVerses("KJV", "John", 3).isEmpty());
         assertEquals(List.<VerseRow>of(), verseBrowserService.findVerses("KJV", "John", 3, 16));
+        assertEquals(List.<VerseRow>of(), verseBrowserService.findVerseRange("KJV", "John", 3, 16, 17));
     }
 
     @Test
@@ -44,6 +45,10 @@ class VerseBrowserServiceTest {
                 new VerseRow("KJV", "John", 3, 16, "For God so loved the world"),
                 new VerseRow("KJV", "John", 3, 17, "For God did not send his Son")
         ), verseBrowserService.findVerses("KJV", "John", 3, null));
+        assertEquals(List.of(
+                new VerseRow("KJV", "John", 3, 16, "For God so loved the world"),
+                new VerseRow("KJV", "John", 3, 17, "For God did not send his Son")
+        ), verseBrowserService.findVerseRange("KJV", "John", 3, 16, 17));
         assertEquals(List.of(
                 new VerseRow("KJV", "John", 3, 16, "For God so loved the world")
         ), verseBrowserService.findVerses("KJV", "John", 3, 16));
@@ -65,6 +70,16 @@ class VerseBrowserServiceTest {
         assertEquals(List.of(), verseBrowserService.getChapters("KJV", "Romans"));
         assertEquals(List.of(), verseBrowserService.getVerses("KJV", "John", 99));
         assertEquals(List.of(), verseBrowserService.findVerses("KJV", "John", 3, 99));
+        assertEquals(List.of(), verseBrowserService.findVerseRange(null, "John", 3, 16, 17));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", null, 3, 16, 17));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", null, 16, 17));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 3, null, 17));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 3, 16, null));
+        assertEquals(List.of(
+                new VerseRow("KJV", "John", 3, 16, "For God so loved the world")
+        ), verseBrowserService.findVerseRange("KJV", "John", 3, 16, 16));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 3, 17, 16));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 3, 98, 99));
     }
 
     @Test
@@ -94,6 +109,16 @@ class VerseBrowserServiceTest {
         when(versesRepository.findByTranslationAndBookAndChapterAndVerseOrderByVerseAsc("Revideált Károli", "1. Mózes", 1, 2)).thenReturn(List.of(
                 new Verse("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
         ));
+        when(versesRepository.findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc(
+                "Revideált Károli",
+                "1. Mózes",
+                1,
+                1,
+                2
+        )).thenReturn(List.of(
+                new Verse("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet."),
+                new Verse("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
+        ));
 
         VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
 
@@ -108,6 +133,10 @@ class VerseBrowserServiceTest {
         assertEquals(List.of(
                 new VerseRow("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
         ), verseBrowserService.findVerses("Revideált Károli", "1. Mózes", 1, 2));
+        assertEquals(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet."),
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
+        ), verseBrowserService.findVerseRange("Revideált Károli", "1. Mózes", 1, 1, 2));
     }
 
     @Test
@@ -122,6 +151,7 @@ class VerseBrowserServiceTest {
         assertEquals(List.of(), verseBrowserService.getChapters("Revideált Károli", "1. Mózes"));
         assertEquals(List.of(), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", 1));
         assertEquals(List.of(), verseBrowserService.findVerses("Revideált Károli", "1. Mózes", 1, null));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("Revideált Károli", "1. Mózes", 1, 1, 2));
     }
 
     @Test
@@ -133,6 +163,8 @@ class VerseBrowserServiceTest {
         when(versesRepository.findChaptersByTranslationAndBook("Revideált Károli", "1. Mózes")).thenThrow(new RuntimeException("no such table: verses"));
         when(versesRepository.findVersesByTranslationAndBookAndChapter("Revideált Károli", "1. Mózes", 1)).thenThrow(new RuntimeException("no such table: verses"));
         when(versesRepository.findByTranslationAndBookAndChapterOrderByVerseAsc("Revideált Károli", "1. Mózes", 1)).thenThrow(new RuntimeException("no such table: verses"));
+        when(versesRepository.findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc("Revideált Károli", "1. Mózes", 1, 1, 2))
+                .thenThrow(new RuntimeException("no such table: verses"));
         VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
 
         assertEquals(List.of(), verseBrowserService.getTranslations());
@@ -140,6 +172,7 @@ class VerseBrowserServiceTest {
         assertEquals(List.of(), verseBrowserService.getChapters("Revideált Károli", "1. Mózes"));
         assertEquals(List.of(), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", 1));
         assertEquals(List.of(), verseBrowserService.findVerses("Revideált Károli", "1. Mózes", 1, null));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("Revideált Károli", "1. Mózes", 1, 1, 2));
     }
 
     @Test

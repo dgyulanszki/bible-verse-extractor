@@ -60,5 +60,13 @@ public interface VersesRepository extends JpaRepository<Verse, Long> {
             Integer chapter,
             Integer verse
     );
+
+    List<Verse> findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc(
+            String translation,
+            String book,
+            Integer chapter,
+            Integer fromVerse,
+            Integer toVerse
+    );
 }
 

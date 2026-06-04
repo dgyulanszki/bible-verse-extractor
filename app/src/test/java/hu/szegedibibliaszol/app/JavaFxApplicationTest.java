@@ -71,7 +71,7 @@ class JavaFxApplicationTest {
         FxTestSupport.runOnFxThread(() -> {
             Stage stage = new Stage();
             javaFxApplication.start(stage);
-            assertEquals("Bible Verse Tool", stage.getTitle());
+            assertEquals(MainViewFactory.APPLICATION_TITLE, stage.getTitle());
             assertNotNull(stage.getScene());
             assertEquals(960, stage.getMinWidth());
             assertEquals(640, stage.getMinHeight());
@@ -93,14 +93,17 @@ class JavaFxApplicationTest {
     }
 
     @Test
-    void stopClosesContextAndExitsPlatform() {
+    void stopSavesCurrentSessionClosesContextAndExitsPlatform() {
         ConfigurableApplicationContext applicationContext = mock(ConfigurableApplicationContext.class);
+        MainViewFactory mainViewFactory = mock(MainViewFactory.class);
+        when(applicationContext.getBean(MainViewFactory.class)).thenReturn(mainViewFactory);
         JavaFxApplication javaFxApplication = new JavaFxApplication();
         javaFxApplication.setContext(applicationContext);
 
         try (MockedStatic<Platform> platform = mockStatic(Platform.class)) {
             javaFxApplication.stop();
 
+            verify(mainViewFactory).saveCurrentSession();
             verify(applicationContext).close();
             platform.verify(Platform::exit);
         }
@@ -111,6 +114,17 @@ class JavaFxApplicationTest {
         JavaFxApplication javaFxApplication = new JavaFxApplication();
 
         assertDoesNotThrow(javaFxApplication::closeContext);
+    }
+
+    @Test
+    void stopExitsPlatformWhenContextIsMissing() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+
+        try (MockedStatic<Platform> platform = mockStatic(Platform.class)) {
+            javaFxApplication.stop();
+
+            platform.verify(Platform::exit);
+        }
     }
 
     private static final class TestJavaFxApplication extends JavaFxApplication {

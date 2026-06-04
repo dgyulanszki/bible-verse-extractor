@@ -126,6 +126,32 @@ public class VerseBrowserService {
                 .toList();
     }
 
+    public List<VerseRow> findVerseRange(
+            String translation,
+            String book,
+            Integer chapter,
+            Integer fromVerse,
+            Integer toVerse
+    ) {
+        if (translation == null || book == null || chapter == null || fromVerse == null || toVerse == null || fromVerse > toVerse) {
+            return List.of();
+        }
+
+        if (databaseBacked) {
+            return queryOrEmpty(() -> versesRepository.findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc(
+                    translation,
+                    book,
+                    chapter,
+                    fromVerse,
+                    toVerse
+            )).stream().map(this::toVerseRow).toList();
+        }
+
+        return streamByChapterSelection(translation, book, chapter)
+                .filter(verseRow -> verseRow.verse() >= fromVerse && verseRow.verse() <= toVerse)
+                .toList();
+    }
+
     private VerseBrowserService(
             VersesRepository versesRepository,
             Path databasePath,
