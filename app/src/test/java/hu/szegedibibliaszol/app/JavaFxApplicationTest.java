@@ -2,8 +2,14 @@ package hu.szegedibibliaszol.app;
 
 import hu.szegedibibliaszol.app.testutil.FxTestSupport;
 import hu.szegedibibliaszol.app.ui.MainViewFactory;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.util.Base64;
 import javafx.application.Platform;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.BeforeAll;
@@ -14,6 +20,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -73,11 +80,68 @@ class JavaFxApplicationTest {
             javaFxApplication.start(stage);
             assertEquals(MainViewFactory.APPLICATION_TITLE, stage.getTitle());
             assertNotNull(stage.getScene());
+            assertEquals(1, stage.getIcons().size());
+            assertTrue(stage.getIcons().getFirst().getWidth() > 0);
             assertEquals(960, stage.getMinWidth());
             assertEquals(640, stage.getMinHeight());
             stage.close();
             return null;
         });
+    }
+
+    @Test
+    void loadApplicationIconReadsImageStream() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+        byte[] pngBytes = iconPngBytes();
+
+        Image image = javaFxApplication.loadApplicationIcon(new ByteArrayInputStream(pngBytes));
+
+        assertEquals(1, (int) image.getWidth());
+        assertEquals(1, (int) image.getHeight());
+    }
+
+    @Test
+    void loadApplicationIconUsesPackagedResourceWhenPresent() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+
+        Image image = javaFxApplication.loadApplicationIcon();
+
+        assertNotNull(JavaFxApplication.class.getResource("/bible-verse-app-icon.png"));
+        assertTrue(image.getWidth() > 0);
+        assertTrue(image.getHeight() > 0);
+    }
+
+    @Test
+    void loadApplicationIconCreatesFallbackWhenResourceIsMissing() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication() {
+            @Override
+            InputStream getApplicationIconStream() {
+                return null;
+            }
+        };
+
+        FxTestSupport.runOnFxThread(() -> {
+            Image image = javaFxApplication.loadApplicationIcon();
+
+            assertEquals(256, (int) image.getWidth());
+            assertEquals(256, (int) image.getHeight());
+            return null;
+        });
+    }
+
+    @Test
+    void loadApplicationIconWrapsIoFailures() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+        InputStream failingStream = new ByteArrayInputStream(iconPngBytes()) {
+            @Override
+            public void close() throws IOException {
+                throw new IOException("forced close failure");
+            }
+        };
+
+        UncheckedIOException exception = assertThrows(UncheckedIOException.class, () -> javaFxApplication.loadApplicationIcon(failingStream));
+
+        assertEquals("Failed to load application icon.", exception.getMessage());
     }
 
     @Test
@@ -141,5 +205,9 @@ class JavaFxApplicationTest {
             createContextCalls++;
             return applicationContext;
         }
+    }
+
+    private byte[] iconPngBytes() {
+        return Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=");
     }
 }

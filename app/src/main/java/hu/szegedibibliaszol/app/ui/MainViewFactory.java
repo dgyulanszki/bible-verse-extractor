@@ -8,12 +8,16 @@ import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -22,13 +26,18 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +54,12 @@ public class MainViewFactory {
     private static final String CHAPTER_PLACEHOLDER = "Fejezet";
     private static final String FROM_VERSE_PLACEHOLDER = "Kezdő vers";
     private static final String TO_VERSE_PLACEHOLDER = "Záró vers";
+    private static final String EDITOR_UPDATE_PROPERTY = "editorUpdate";
+    private static final String ACCENT_BLUE = "#355C8A";
+    private static final String DEEP_BLUE = "#25476F";
+    private static final String PALE_BLUE = "#EAF2FB";
+    private static final String PANEL_WHITE = "#FFFFFF";
+    private static final String RANGE_RESET_BUTTON_TEXT = "↺";
     private static final Map<String, String> CANONICAL_BOOK_NAMES_BY_KEY = createCanonicalBookNamesByKey();
 
     private final VerseBrowserService verseBrowserService;
@@ -84,15 +99,23 @@ public class MainViewFactory {
         Label statusLabel = new Label(INITIAL_STATUS_MESSAGE);
         VBox rangeSelectionsBox = new VBox(10);
         List<RangeSelectionControls> rangeSelections = new ArrayList<>();
+        ScrollPane mainScrollPane = new ScrollPane();
 
         this.activeTranslationBox = translationBox;
         this.activeRangeSelections = rangeSelections;
 
         configurePlaceholderDisplay(translationBox, TRANSLATION_PLACEHOLDER);
         setComboBoxItems(translationBox, verseBrowserService.getTranslations());
-        addRangeButton.setTooltip(new Tooltip("Új szakasz hozzáadása"));
+        addRangeButton.setTooltip(new Tooltip("Új szakasz hozzáadása (Numpad +)"));
         addRangeButton.setDisable(true);
+        addRangeButton.setStyle(primaryButtonStyle());
         copyButton.setDisable(true);
+        saveButton.setStyle(secondaryButtonStyle());
+        copyButton.setStyle(primaryButtonStyle());
+        resetButton.setStyle(secondaryButtonStyle());
+        translationHelpButton.setStyle(helpButtonStyle());
+        generalHelpButton.setStyle(helpButtonStyle());
+        statusLabel.setStyle("-fx-text-fill: " + PANEL_WHITE + "; -fx-font-weight: bold;");
 
         Runnable refreshCopyState = () -> copyButton.setDisable(!isCopyReady(translationBox.getValue(), rangeSelections));
         rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState);
@@ -129,6 +152,7 @@ public class MainViewFactory {
             refreshRangeSelectionPresentation(rangeSelections);
             refreshCopyState.run();
             statusLabel.setText("Új szakasz hozzáadva. Válassz könyvet.");
+            mainScrollPane.setVvalue(1.0);
         });
 
         saveButton.setOnAction(_ -> {
@@ -169,30 +193,52 @@ public class MainViewFactory {
             statusLabel.setText(INITIAL_STATUS_MESSAGE);
         });
 
+        HBox generalHelpRow = new HBox(generalHelpButton);
+        generalHelpRow.setAlignment(Pos.CENTER_RIGHT);
+        generalHelpRow.setPadding(new Insets(0, 12, 0, 12));
+
         HBox translationRow = new HBox(12,
                 translationBox,
                 translationHelpButton,
-                addRangeButton,
                 saveButton,
                 copyButton,
-                resetButton,
-                generalHelpButton
+                resetButton
         );
-        translationRow.setPadding(new Insets(12, 12, 4, 12));
+        translationRow.setPadding(new Insets(0, 12, 4, 12));
+        translationRow.setStyle(panelRowStyle());
+
+        HBox addRangeRow = new HBox(addRangeButton);
+        addRangeRow.setPadding(new Insets(0, 12, 4, 12));
 
         Label titleLabel = new Label(APPLICATION_TITLE);
-        titleLabel.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
+        titleLabel.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;");
 
         Label subtitleLabel = new Label("Válassz fordítást, állíts össze egy vagy több igerészletet, majd másold a szöveget a vágólapra.");
         subtitleLabel.setWrapText(true);
+        subtitleLabel.setStyle("-fx-text-fill: " + PALE_BLUE + ";");
 
-        VBox header = new VBox(6, titleLabel, subtitleLabel, translationRow, rangeSelectionsBox, statusLabel);
-        header.setPadding(new Insets(16));
+        VBox mainContent = new VBox(6,
+                titleLabel,
+                subtitleLabel,
+                generalHelpRow,
+                translationRow,
+                rangeSelectionsBox,
+                addRangeRow,
+                statusLabel,
+                createContentPanel()
+        );
+        mainContent.setPadding(new Insets(16));
+        mainContent.setStyle("-fx-background-color: linear-gradient(to bottom, " + DEEP_BLUE + ", " + ACCENT_BLUE + ");");
 
         BorderPane root = new BorderPane();
-        root.setTop(header);
-        root.setCenter(createContentPanel());
-        BorderPane.setMargin(root.getCenter(), new Insets(0, 16, 16, 16));
+        root.setStyle("-fx-background-color: " + DEEP_BLUE + ";");
+        mainScrollPane.setContent(mainContent);
+        mainScrollPane.setFitToWidth(true);
+        mainScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        mainScrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        mainScrollPane.setStyle("-fx-background: " + DEEP_BLUE + "; -fx-background-color: transparent;");
+        root.setCenter(mainScrollPane);
+        registerKeyboardShortcuts(root, addRangeButton);
 
         HBox.setHgrow(translationBox, Priority.ALWAYS);
 
@@ -215,16 +261,17 @@ public class MainViewFactory {
 
     String generalHelpContentText() {
         return "1. Válassz fordítást.\n"
-                + "2. Add hozzá a szükséges szakaszsorokat a + gombbal.\n"
+                + "2. Add hozzá a szükséges szakaszsorokat a + gombbal vagy a numerikus billentyűzet + gombjával.\n"
                 + "3. Minden sorban válassz könyvet, fejezetet, majd kezdő és záró verset.\n"
-                + "4. A kezdő és záró vers lehet azonos is.\n"
-                + "5. A Másolás gomb az összes kész szakaszt egyetlen blokkba másolja.\n"
-                + "6. A Mentés gombbal vagy az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.";
+                + "4. A ↺ gomb csak az adott szakaszsort állítja vissza alaphelyzetbe.\n"
+                + "5. A kezdő és záró vers lehet azonos is.\n"
+                + "6. A Másolás gomb az összes kész szakaszt egyetlen blokkba másolja.\n"
+                + "7. A Mentés gombbal vagy az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.";
     }
 
     String translationHelpContentText() {
         return "A fordítássorban választhatod ki a közös fordítást minden szakaszhoz.\n"
-                + "- A + gomb új szakaszsort ad hozzá.\n"
+                + "- A + gomb vagy a numerikus billentyűzet + gombja új szakaszsort ad hozzá.\n"
                 + "- A Mentés gomb kézzel elmenti az aktuális munkamenetet.\n"
                 + "- A Másolás gomb az összes kész szakaszt a vágólapra másolja.\n"
                 + "- Az Alaphelyzet gomb törli az aktuális kijelöléseket.\n"
@@ -234,6 +281,7 @@ public class MainViewFactory {
     String rangeHelpContentText() {
         return "Minden szakaszsorban ugyanahhoz a fordításhoz választhatod könyvet, fejezetet és vershatárokat.\n"
                 + "- A legördülők első eleme a kiürített, alapértelmezett állapot.\n"
+                + "- A ↺ gomb csak az adott sort állítja vissza alaphelyzetbe.\n"
                 + "- A kezdő és záró vers lehet ugyanaz is.\n"
                 + "- A könyv módosítását a program megerősítteti, ha a sorban már van fejezet- vagy versválasztás.\n"
                 + "- A - gomb eltávolítja az adott szakaszsort.";
@@ -309,6 +357,31 @@ public class MainViewFactory {
         return helpButton;
     }
 
+    private String primaryButtonStyle() {
+        return "-fx-font-weight: bold; -fx-background-color: " + PANEL_WHITE + "; -fx-text-fill: " + DEEP_BLUE
+                + "; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: " + PANEL_WHITE + ";";
+    }
+
+    private String secondaryButtonStyle() {
+        return "-fx-font-weight: bold; -fx-background-color: transparent; -fx-text-fill: " + PANEL_WHITE
+                + "; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: " + PANEL_WHITE + ";";
+    }
+
+    private String helpButtonStyle() {
+        return "-fx-font-weight: bold; -fx-background-color: " + DEEP_BLUE + "; -fx-text-fill: " + PANEL_WHITE
+                + "; -fx-background-radius: 999; -fx-border-radius: 999; -fx-border-color: " + PANEL_WHITE + ";";
+    }
+
+    private String panelRowStyle() {
+        return "-fx-background-color: rgba(255, 255, 255, 0.14); -fx-background-radius: 10;"
+                + " -fx-border-color: rgba(255, 255, 255, 0.32); -fx-border-radius: 10; -fx-padding: 10;";
+    }
+
+    private String comboBoxStyle() {
+        return "-fx-background-color: " + PANEL_WHITE + "; -fx-text-fill: " + DEEP_BLUE
+                + "; -fx-border-color: " + ACCENT_BLUE + "; -fx-border-radius: 8; -fx-background-radius: 8;";
+    }
+
     private Alert createInformationAlert(String title, String header, String content) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle(title);
@@ -319,6 +392,7 @@ public class MainViewFactory {
 
     private void configurePlaceholderDisplay(ComboBox<?> comboBox, String placeholderText) {
         comboBox.setPromptText(placeholderText);
+        comboBox.setStyle(comboBoxStyle());
         comboBox.setCellFactory(_ -> new PlaceholderListCell<>(placeholderText));
         PlaceholderListCell<Object> buttonCell = new PlaceholderListCell<>(placeholderText);
         comboBox.valueProperty().addListener((_, _, newValue) -> buttonCell.setText(
@@ -326,7 +400,37 @@ public class MainViewFactory {
         ));
         @SuppressWarnings("unchecked")
         ComboBox<Object> typedComboBox = (ComboBox<Object>) comboBox;
+        typedComboBox.setEditable(false);
+        typedComboBox.valueProperty().addListener((_, _, newValue) -> {
+            if (typedComboBox.isEditable()) {
+                updateEditorText(typedComboBox, newValue);
+            }
+        });
         typedComboBox.setButtonCell(buttonCell);
+    }
+
+    private void configureNumericQuickSelection(ComboBox<Integer> comboBox, String placeholderText) {
+        configurePlaceholderDisplay(comboBox, placeholderText);
+        comboBox.setEditable(true);
+        comboBox.setConverter(integerComboBoxConverter());
+        comboBox.getEditor().setPromptText(placeholderText);
+        comboBox.getEditor().setTextFormatter(new TextFormatter<>(change -> isNumericEditorChangeAllowed(comboBox, change)
+                ? change
+                : null));
+        comboBox.valueProperty().addListener((_, _, newValue) -> updateEditorText(comboBox, newValue));
+        comboBox.getEditor().textProperty().addListener((_, _, newText) -> {
+            if (!isEditorUpdateInProgress(comboBox)) {
+                applyNumericQuickSelection(comboBox, newText);
+            }
+        });
+        comboBox.getEditor().focusedProperty().addListener((_, _, focused) -> {
+            if (focused) {
+                comboBox.getEditor().selectAll();
+                return;
+            }
+            commitNumericEditorText(comboBox);
+        });
+        comboBox.getEditor().setOnAction(_ -> commitNumericEditorText(comboBox));
     }
 
     private VBox createContentPanel() {
@@ -334,10 +438,26 @@ public class MainViewFactory {
                 "Ebben a nézetben nem jelenik meg verslista. A fenti vezérlőkkel állítsd össze a kívánt szakaszokat, majd kattints a Másolás gombra."
         );
         instructionsLabel.setWrapText(true);
+        instructionsLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
 
         VBox contentPanel = new VBox(instructionsLabel);
-        contentPanel.setPadding(new Insets(16));
+        contentPanel.setPadding(new Insets(12));
+        contentPanel.setStyle("-fx-background-color: " + PANEL_WHITE + "; -fx-background-radius: 12; -fx-border-color: "
+                + ACCENT_BLUE
+                + "; -fx-border-width: 0 0 0 6; -fx-border-radius: 12;");
         return contentPanel;
+    }
+
+    private void registerKeyboardShortcuts(Parent root, Button addRangeButton) {
+        root.addEventFilter(KeyEvent.KEY_PRESSED, new EventHandler<>() {
+            @Override
+            public void handle(KeyEvent event) {
+                if (event.getCode() == KeyCode.ADD && !addRangeButton.isDisable()) {
+                    addRangeButton.fire();
+                    event.consume();
+                }
+            }
+        });
     }
 
     private void restoreSavedSession(
@@ -433,18 +553,26 @@ public class MainViewFactory {
         ComboBox<Integer> chapterBox = new ComboBox<>();
         ComboBox<Integer> fromVerseBox = new ComboBox<>();
         ComboBox<Integer> toVerseBox = new ComboBox<>();
+        Button resetButton = new Button(RANGE_RESET_BUTTON_TEXT);
         Button removeButton = new Button("-");
         Button helpButton = createHelpButton("A szakaszsor súgójának megnyitása");
 
         configurePlaceholderDisplay(bookBox, BOOK_PLACEHOLDER);
-        configurePlaceholderDisplay(chapterBox, CHAPTER_PLACEHOLDER);
-        configurePlaceholderDisplay(fromVerseBox, FROM_VERSE_PLACEHOLDER);
-        configurePlaceholderDisplay(toVerseBox, TO_VERSE_PLACEHOLDER);
+        configureNumericQuickSelection(chapterBox, CHAPTER_PLACEHOLDER);
+        configureNumericQuickSelection(fromVerseBox, FROM_VERSE_PLACEHOLDER);
+        configureNumericQuickSelection(toVerseBox, TO_VERSE_PLACEHOLDER);
+        rangeLabel.setMinWidth(96);
+        rangeLabel.setPrefWidth(96);
+        rangeLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        resetButton.setStyle(secondaryButtonStyle());
+        resetButton.setTooltip(new Tooltip("A szakaszsor alaphelyzetbe állítása"));
+        removeButton.setStyle(secondaryButtonStyle());
         removeButton.setTooltip(new Tooltip("A szakaszsor eltávolítása"));
+        helpButton.setStyle(helpButtonStyle());
         helpButton.setOnAction(_ -> createRangeHelpAlert().showAndWait());
 
         RangeSelectionControls rangeSelection = new RangeSelectionControls(
-                new HBox(12, rangeLabel, bookBox, chapterBox, fromVerseBox, toVerseBox, removeButton, helpButton),
+                new HBox(12, rangeLabel, bookBox, chapterBox, fromVerseBox, toVerseBox, resetButton, removeButton),
                 rangeLabel,
                 bookBox,
                 chapterBox,
@@ -454,12 +582,23 @@ public class MainViewFactory {
                 helpButton
         );
         rangeSelection.container.setPadding(new Insets(4, 12, 4, 12));
+        rangeSelection.container.setStyle(panelRowStyle());
         HBox.setHgrow(bookBox, Priority.ALWAYS);
 
         setComboBoxItems(bookBox, List.of());
         setComboBoxItems(chapterBox, List.of());
         setComboBoxItems(fromVerseBox, List.of());
         setComboBoxItems(toVerseBox, List.of());
+        resetButton.setOnAction(new EventHandler<ActionEvent>() {
+            @Override
+            public void handle(ActionEvent event) {
+                resetRangeSelection(
+                        rangeSelection,
+                        activeTranslationBox == null ? null : activeTranslationBox.getValue(),
+                        refreshCopyState
+                );
+            }
+        });
 
         bookBox.valueProperty().addListener((_, oldValue, newValue) -> {
             if (rangeSelection.suppressSelectionChangeHandling || Objects.equals(oldValue, newValue)) {
@@ -495,6 +634,23 @@ public class MainViewFactory {
             }
         });
         return rangeSelection;
+    }
+
+    private void resetRangeSelection(RangeSelectionControls rangeSelection, String translation, Runnable refreshCopyState) {
+        rangeSelection.suppressSelectionChangeHandling = true;
+        try {
+            setComboBoxItems(rangeSelection.bookBox, translation == null ? List.of() : verseBrowserService.getBooks(translation));
+            clearComboBox(rangeSelection.chapterBox);
+            clearComboBox(rangeSelection.fromVerseBox);
+            clearComboBox(rangeSelection.toVerseBox);
+            rangeSelection.availableVerses.set(List.of());
+        } finally {
+            rangeSelection.suppressSelectionChangeHandling = false;
+        }
+        refreshCopyState.run();
+        rangeSelection.statusLabel.setText(translation == null
+                ? "A(z) " + rangeSelection.displayIndex + ". szakasz alaphelyzetbe állítva. Válassz fordítást."
+                : "A(z) " + rangeSelection.displayIndex + ". szakasz alaphelyzetbe állítva. Válassz könyvet.");
     }
 
     private void applyTranslationSelection(
@@ -689,14 +845,14 @@ public class MainViewFactory {
     }
 
     private <T> void setComboBoxItems(ComboBox<T> comboBox, List<T> items) {
-        comboBox.setItems(FXCollections.observableArrayList(withDefaultOption(items)));
+        replaceComboBoxItems(comboBox, items);
         comboBox.getSelectionModel().clearSelection();
         comboBox.setValue(null);
     }
 
     private void updateComboBoxItems(ComboBox<Integer> comboBox, List<Integer> items) {
         Integer currentValue = comboBox.getValue();
-        comboBox.setItems(FXCollections.observableArrayList(withDefaultOption(items)));
+        replaceComboBoxItems(comboBox, items);
         if (currentValue == null) {
             comboBox.getSelectionModel().clearSelection();
             comboBox.setValue(null);
@@ -705,7 +861,9 @@ public class MainViewFactory {
         if (!items.contains(currentValue)) {
             comboBox.getSelectionModel().clearSelection();
             comboBox.setValue(null);
+            return;
         }
+        comboBox.setValue(currentValue);
     }
 
     private void restoreTranslationSelection(ComboBox<String> translationBox, String value) {
@@ -738,7 +896,11 @@ public class MainViewFactory {
     private <T> void clearComboBox(ComboBox<T> comboBox) {
         comboBox.getSelectionModel().clearSelection();
         comboBox.setValue(null);
-        comboBox.setItems(FXCollections.observableArrayList(withDefaultOption(List.of())));
+        replaceComboBoxItems(comboBox, List.of());
+    }
+
+    private <T> void replaceComboBoxItems(ComboBox<T> comboBox, List<T> items) {
+        comboBox.setItems(FXCollections.observableArrayList(withDefaultOption(items)));
     }
 
     private <T> List<T> withDefaultOption(List<T> items) {
@@ -754,82 +916,186 @@ public class MainViewFactory {
 
     private static Map<String, String> createCanonicalBookNamesByKey() {
         Map<String, String> canonicalBookNamesByKey = new LinkedHashMap<>();
-        for (String bookName : List.of(
-                "1Mózes",
-                "2Mózes",
-                "3Mózes",
-                "4Mózes",
-                "5Mózes",
-                "Józsué",
-                "Bírák",
-                "Ruth",
-                "1Sámuel",
-                "2Sámuel",
-                "1Királyok",
-                "2Királyok",
-                "1Krónikák",
-                "2Krónikák",
-                "Ezsdrás",
-                "Nehémiás",
-                "Eszter",
-                "Jób",
-                "Zsoltárok",
-                "Példabeszédek",
-                "Prédikátor",
-                "Énekek",
-                "Ézsaiás",
-                "Jeremiás",
-                "Jeremiássiralmai",
-                "Ezékiel",
-                "Dániel",
-                "Hóseás",
-                "Jóel",
-                "Ámósz",
-                "Abdiás",
-                "Jónás",
-                "Mikeás",
-                "Náhum",
-                "Habakuk",
-                "Zofóniás",
-                "Haggeus",
-                "Zakariás",
-                "Malakiás",
-                "Máté",
-                "Márk",
-                "Lukács",
-                "János",
-                "Cselekedetek",
-                "Róma",
-                "1Korinthus",
-                "2Korinthus",
-                "Galata",
-                "Efezus",
-                "Filippi",
-                "Kolossé",
-                "1Thesszalonika",
-                "2Thesszalonika",
-                "1Timóteus",
-                "2Timóteus",
-                "Titusz",
-                "Filemon",
-                "Zsidók",
-                "Jakab",
-                "1Péter",
-                "2Péter",
-                "1János",
-                "2János",
-                "3János",
-                "Júdás",
-                "Jelenések"
-        )) {
-            canonicalBookNamesByKey.put(normalizeBookNameKey(bookName), bookName.replace("Jeremiássiralmai", "Jeremiás siralmai"));
-        }
-        canonicalBookNamesByKey.put(normalizeBookNameKey("Jeremiás siralmai"), "Jeremiás siralmai");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Mózes");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Mózes");
+        addCanonicalBookName(canonicalBookNamesByKey, "3Mózes");
+        addCanonicalBookName(canonicalBookNamesByKey, "4Mózes");
+        addCanonicalBookName(canonicalBookNamesByKey, "5Mózes");
+        addCanonicalBookName(canonicalBookNamesByKey, "Józsué");
+        addCanonicalBookName(canonicalBookNamesByKey, "Bírák");
+        addCanonicalBookName(canonicalBookNamesByKey, "Ruth");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Sámuel");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Sámuel");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Királyok");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Királyok");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Krónikák");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Krónikák");
+        addCanonicalBookName(canonicalBookNamesByKey, "Ezsdrás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Nehémiás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Eszter");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jób");
+        addCanonicalBookName(canonicalBookNamesByKey, "Zsoltárok");
+        addCanonicalBookName(canonicalBookNamesByKey, "Példabeszédek");
+        addCanonicalBookName(canonicalBookNamesByKey, "Prédikátor");
+        addCanonicalBookName(canonicalBookNamesByKey, "Énekek éneke", "Énekek");
+        addCanonicalBookName(canonicalBookNamesByKey, "Ézsaiás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jeremiás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jeremiás siralmai", "Jeremiássiralmai");
+        addCanonicalBookName(canonicalBookNamesByKey, "Ezékiel");
+        addCanonicalBookName(canonicalBookNamesByKey, "Dániel");
+        addCanonicalBookName(canonicalBookNamesByKey, "Hóseás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jóel");
+        addCanonicalBookName(canonicalBookNamesByKey, "Ámós", "Ámósz");
+        addCanonicalBookName(canonicalBookNamesByKey, "Abdiás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jónás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Mikeás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Náhum");
+        addCanonicalBookName(canonicalBookNamesByKey, "Habakuk");
+        addCanonicalBookName(canonicalBookNamesByKey, "Sofóniás", "Zofóniás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Aggeus", "Haggeus");
+        addCanonicalBookName(canonicalBookNamesByKey, "Zakariás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Malakiás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Máté");
+        addCanonicalBookName(canonicalBookNamesByKey, "Márk");
+        addCanonicalBookName(canonicalBookNamesByKey, "Lukács");
+        addCanonicalBookName(canonicalBookNamesByKey, "János");
+        addCanonicalBookName(canonicalBookNamesByKey, "Apostolok Cselekedetei", "Cselekedetek");
+        addCanonicalBookName(canonicalBookNamesByKey, "Róma");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Korintus", "1Korinthus");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Korintus", "2Korinthus");
+        addCanonicalBookName(canonicalBookNamesByKey, "Galata");
+        addCanonicalBookName(canonicalBookNamesByKey, "Efezus");
+        addCanonicalBookName(canonicalBookNamesByKey, "Filippi");
+        addCanonicalBookName(canonicalBookNamesByKey, "Kolossé");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Thessalonika", "1Thesszalonika");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Thessalonika", "2Thesszalonika");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Timóteus");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Timóteus");
+        addCanonicalBookName(canonicalBookNamesByKey, "Titusz");
+        addCanonicalBookName(canonicalBookNamesByKey, "Filemon");
+        addCanonicalBookName(canonicalBookNamesByKey, "Zsidók");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jakab");
+        addCanonicalBookName(canonicalBookNamesByKey, "1Péter");
+        addCanonicalBookName(canonicalBookNamesByKey, "2Péter");
+        addCanonicalBookName(canonicalBookNamesByKey, "1János");
+        addCanonicalBookName(canonicalBookNamesByKey, "2János");
+        addCanonicalBookName(canonicalBookNamesByKey, "3János");
+        addCanonicalBookName(canonicalBookNamesByKey, "Júdás");
+        addCanonicalBookName(canonicalBookNamesByKey, "Jelenések");
         return canonicalBookNamesByKey;
     }
 
+    private static void addCanonicalBookName(Map<String, String> canonicalBookNamesByKey, String canonicalName, String... aliases) {
+        canonicalBookNamesByKey.put(normalizeBookNameKey(canonicalName), canonicalName);
+        for (String alias : aliases) {
+            canonicalBookNamesByKey.put(normalizeBookNameKey(alias), canonicalName);
+        }
+    }
+
     private static String normalizeBookNameKey(String book) {
-        return book.toLowerCase().replaceAll("[\\s.]", "");
+        return book.toLowerCase(Locale.ROOT).replaceAll("[\\s.]", "");
+    }
+
+    private <T> void updateEditorText(ComboBox<T> comboBox, T value) {
+        runWithEditorUpdate(comboBox, () -> comboBox.getEditor().setText(value == null ? "" : String.valueOf(value)));
+    }
+
+    private boolean isNumericEditorChangeAllowed(ComboBox<Integer> comboBox, TextFormatter.Change change) {
+        String newText = change.getControlNewText();
+        if (newText == null || newText.isEmpty()) {
+            return true;
+        }
+        if (!newText.chars().allMatch(Character::isDigit)) {
+            return false;
+        }
+        return hasAvailableValueWithPrefix(comboBox, newText);
+    }
+
+    private boolean hasAvailableValueWithPrefix(ComboBox<Integer> comboBox, String prefix) {
+        return comboBox.getItems().stream()
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .anyMatch(value -> value.startsWith(prefix));
+    }
+
+    private void applyNumericQuickSelection(ComboBox<Integer> comboBox, String editorText) {
+        if (editorText == null || editorText.isBlank()) {
+            comboBox.getSelectionModel().clearSelection();
+            comboBox.setValue(null);
+            return;
+        }
+        Integer typedValue = parseInteger(editorText);
+        if (typedValue == null || !comboBox.getItems().contains(typedValue)) {
+            clearNumericSelectionPreservingEditorText(comboBox, editorText);
+            return;
+        }
+        comboBox.getSelectionModel().select(typedValue);
+        comboBox.setValue(typedValue);
+        if (comboBox.isShowing() || comboBox.isFocused() || comboBox.getEditor().isFocused()) {
+            comboBox.show();
+        }
+    }
+
+    private void commitNumericEditorText(ComboBox<Integer> comboBox) {
+        String editorText = comboBox.getEditor().getText();
+        if (editorText == null || editorText.isBlank()) {
+            comboBox.setValue(null);
+            return;
+        }
+
+        Integer typedValue = parseInteger(editorText);
+        if (typedValue != null && comboBox.getItems().contains(typedValue)) {
+            comboBox.setValue(typedValue);
+            return;
+        }
+
+        updateEditorText(comboBox, comboBox.getValue());
+    }
+
+    private void clearNumericSelectionPreservingEditorText(ComboBox<Integer> comboBox, String editorText) {
+        runWithEditorUpdate(comboBox, () -> {
+            comboBox.getSelectionModel().clearSelection();
+            comboBox.setValue(null);
+            comboBox.getEditor().setText(editorText);
+        });
+    }
+
+    private Integer parseInteger(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(text.trim());
+        } catch (NumberFormatException _) {
+            return null;
+        }
+    }
+
+    private StringConverter<Integer> integerComboBoxConverter() {
+        return new StringConverter<>() {
+            @Override
+            public String toString(Integer value) {
+                return value == null ? "" : String.valueOf(value);
+            }
+
+            @Override
+            public Integer fromString(String text) {
+                return parseInteger(text);
+            }
+        };
+    }
+
+    private boolean isEditorUpdateInProgress(ComboBox<?> comboBox) {
+        return Boolean.TRUE.equals(comboBox.getProperties().get(EDITOR_UPDATE_PROPERTY));
+    }
+
+    private void runWithEditorUpdate(ComboBox<?> comboBox, Runnable action) {
+        comboBox.getProperties().put(EDITOR_UPDATE_PROPERTY, true);
+        try {
+            action.run();
+        } finally {
+            comboBox.getProperties().put(EDITOR_UPDATE_PROPERTY, false);
+        }
     }
 
     static final class PlaceholderListCell<T> extends ListCell<T> {
@@ -888,6 +1154,7 @@ public class MainViewFactory {
             this.statusLabel = new Label();
             this.container.getChildren().add(this.statusLabel);
             HBox.setHgrow(this.statusLabel, Priority.ALWAYS);
+            this.container.getChildren().add(this.helpButton);
         }
     }
 }

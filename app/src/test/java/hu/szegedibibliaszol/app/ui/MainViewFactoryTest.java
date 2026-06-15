@@ -6,9 +6,14 @@ import hu.szegedibibliaszol.app.testutil.FxTestSupport;
 import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
+import java.lang.reflect.Method;
 import java.util.ArrayDeque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import javafx.beans.value.ObservableValue;
+import javafx.event.ActionEvent;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
@@ -17,7 +22,10 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.input.Clipboard;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -58,16 +66,20 @@ class MainViewFactoryTest {
             Clipboard.getSystemClipboard().clear();
             Parent parent = mainViewFactory.createRoot();
             BorderPane root = (BorderPane) parent;
-            VBox header = (VBox) root.getTop();
-            HBox translationRow = (HBox) header.getChildren().get(2);
-            VBox rangeSelectionsBox = (VBox) header.getChildren().get(3);
-            Label statusLabel = (Label) header.getChildren().get(4);
+            VBox mainContent = mainContent(root);
+            HBox generalHelpRow = (HBox) mainContent.getChildren().get(2);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+            HBox addRangeRow = (HBox) mainContent.getChildren().get(5);
+            Label statusLabel = (Label) mainContent.getChildren().get(6);
+            Label titleLabel = assertInstanceOf(Label.class, mainContent.getChildren().getFirst());
             ComboBox<String> translationBox = comboBox(translationRow, 0);
-            Button addRangeButton = (Button) translationRow.getChildren().get(2);
-            Button saveButton = (Button) translationRow.getChildren().get(3);
-            Button copyButton = (Button) translationRow.getChildren().get(4);
-            Button resetButton = (Button) translationRow.getChildren().get(5);
-            VBox contentPanel = assertInstanceOf(VBox.class, root.getCenter());
+            Button generalHelpButton = (Button) generalHelpRow.getChildren().getFirst();
+            Button addRangeButton = (Button) addRangeRow.getChildren().getFirst();
+            Button saveButton = (Button) translationRow.getChildren().get(2);
+            Button copyButton = (Button) translationRow.getChildren().get(3);
+            Button resetButton = (Button) translationRow.getChildren().get(4);
+            VBox contentPanel = (VBox) mainContent.getChildren().get(7);
             Label instructionsLabel = assertInstanceOf(Label.class, contentPanel.getChildren().getFirst());
 
             HBox firstRangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
@@ -76,8 +88,10 @@ class MainViewFactoryTest {
             ComboBox<Integer> firstChapterBox = comboBox(firstRangeRow, 2);
             ComboBox<Integer> firstFromVerseBox = comboBox(firstRangeRow, 3);
             ComboBox<Integer> firstToVerseBox = comboBox(firstRangeRow, 4);
-            Button firstRemoveButton = (Button) firstRangeRow.getChildren().get(5);
+            Button firstResetButton = (Button) firstRangeRow.getChildren().get(5);
+            Button firstRemoveButton = (Button) firstRangeRow.getChildren().get(6);
             Label firstRangeStatus = (Label) firstRangeRow.getChildren().get(7);
+            Button firstRangeHelpButton = (Button) firstRangeRow.getChildren().get(8);
 
             assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getText());
             assertEquals("Fordítás", translationBox.getPromptText());
@@ -86,6 +100,9 @@ class MainViewFactoryTest {
             assertEquals("Kezdő vers", firstFromVerseBox.getPromptText());
             assertEquals("Záró vers", firstToVerseBox.getPromptText());
             assertEquals("Szakasz 1", firstRangeLabel.getText());
+            assertEquals("?", generalHelpButton.getText());
+            assertEquals("?", firstRangeHelpButton.getText());
+            assertEquals("↺", firstResetButton.getText());
             assertEquals(2, translationBox.getItems().size());
             assertNull(translationBox.getItems().getFirst());
             assertEquals("Revideált Károli", translationBox.getItems().get(1));
@@ -95,6 +112,17 @@ class MainViewFactoryTest {
             assertTrue(copyButton.isDisable());
             assertTrue(firstRemoveButton.isDisable());
             assertTrue(instructionsLabel.getText().contains("nem jelenik meg verslista"));
+            assertTrue(addRangeButton.getTooltip().getText().contains("Numpad +"));
+            assertEquals(96, firstRangeLabel.getPrefWidth());
+            assertTrue(titleLabel.getStyle().contains("white"));
+            assertTrue(translationRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
+            assertTrue(translationBox.getStyle().contains("#355C8A"));
+            assertTrue(firstRangeRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
+            assertTrue(contentPanel.getStyle().contains("#355C8A"));
+
+            firstResetButton.fire();
+            assertEquals("A(z) 1. szakasz alaphelyzetbe állítva. Válassz fordítást.", firstRangeStatus.getText());
+            assertNull(firstBookBox.getValue());
 
             translationBox.setValue("Revideált Károli");
             assertEquals("A fordítás kiválasztva. Válassz könyvet a szakaszokhoz.", statusLabel.getText());
@@ -135,7 +163,7 @@ class MainViewFactoryTest {
             assertEquals("A(z) 1. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", firstRangeStatus.getText());
             assertFalse(copyButton.isDisable());
 
-            addRangeButton.fire();
+            root.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "+", "+", KeyCode.ADD, false, false, false, false));
             assertTrue(copyButton.isDisable());
             assertEquals(2, rangeSelectionsBox.getChildren().size());
             assertFalse(firstRemoveButton.isDisable());
@@ -146,6 +174,7 @@ class MainViewFactoryTest {
             ComboBox<Integer> secondChapterBox = comboBox(secondRangeRow, 2);
             ComboBox<Integer> secondFromVerseBox = comboBox(secondRangeRow, 3);
             ComboBox<Integer> secondToVerseBox = comboBox(secondRangeRow, 4);
+            Button secondResetButton = (Button) secondRangeRow.getChildren().get(5);
             Label secondRangeStatus = (Label) secondRangeRow.getChildren().get(7);
 
             assertEquals("Szakasz 2", secondRangeLabel.getText());
@@ -153,6 +182,7 @@ class MainViewFactoryTest {
             assertNull(secondBookBox.getItems().get(0));
             assertEquals("1. Mózes", secondBookBox.getItems().get(1));
             assertEquals("Zsoltárok", secondBookBox.getItems().get(2));
+            assertFalse(((Button) secondRangeRow.getChildren().get(8)).isVisible());
 
             secondBookBox.setValue("Zsoltárok");
             assertEquals("A(z) 2. szakaszban a könyv kiválasztva. Válassz fejezetet.", secondRangeStatus.getText());
@@ -172,6 +202,20 @@ class MainViewFactoryTest {
             secondFromVerseBox.setValue(1);
             assertEquals("A(z) 2. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", secondRangeStatus.getText());
             assertEquals(2, secondToVerseBox.getValue());
+            assertFalse(copyButton.isDisable());
+
+            secondResetButton.fire();
+            assertNull(secondBookBox.getValue());
+            assertNull(secondChapterBox.getValue());
+            assertNull(secondFromVerseBox.getValue());
+            assertNull(secondToVerseBox.getValue());
+            assertEquals("A(z) 2. szakasz alaphelyzetbe állítva. Válassz könyvet.", secondRangeStatus.getText());
+            assertTrue(copyButton.isDisable());
+
+            secondBookBox.setValue("Zsoltárok");
+            secondChapterBox.setValue(23);
+            secondFromVerseBox.setValue(1);
+            secondToVerseBox.setValue(2);
             assertFalse(copyButton.isDisable());
 
             saveButton.fire();
@@ -197,7 +241,7 @@ class MainViewFactoryTest {
                     Clipboard.getSystemClipboard().getString()
             );
 
-            Button secondRemoveButton = (Button) secondRangeRow.getChildren().get(5);
+            Button secondRemoveButton = (Button) secondRangeRow.getChildren().get(6);
             secondRemoveButton.fire();
             assertEquals(1, rangeSelectionsBox.getChildren().size());
             assertFalse(copyButton.isDisable());
@@ -242,20 +286,21 @@ class MainViewFactoryTest {
         FxTestSupport.runOnFxThread(() -> {
             Parent parent = mainViewFactory.createRoot();
             BorderPane root = (BorderPane) parent;
-            VBox header = (VBox) root.getTop();
-            HBox translationRow = (HBox) header.getChildren().get(2);
-            VBox rangeSelectionsBox = (VBox) header.getChildren().get(3);
-            Label statusLabel = (Label) header.getChildren().get(4);
+            VBox mainContent = mainContent(root);
+            HBox generalHelpRow = (HBox) mainContent.getChildren().get(2);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+            Label statusLabel = (Label) mainContent.getChildren().get(6);
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             Button translationHelpButton = (Button) translationRow.getChildren().get(1);
-            Button generalHelpButton = (Button) translationRow.getChildren().get(6);
+            Button generalHelpButton = (Button) generalHelpRow.getChildren().getFirst();
 
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
             ComboBox<String> bookBox = comboBox(rangeRow, 1);
             ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
             ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
             ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
-            Button rangeHelpButton = (Button) rangeRow.getChildren().get(6);
+            Button rangeHelpButton = (Button) rangeRow.getChildren().get(8);
 
             assertEquals("Revideált Károli", translationBox.getValue());
             assertEquals("1. Mózes", bookBox.getValue());
@@ -313,9 +358,9 @@ class MainViewFactoryTest {
         FxTestSupport.runOnFxThread(() -> {
             Parent parent = mainViewFactory.createRoot();
             BorderPane root = (BorderPane) parent;
-            VBox header = (VBox) root.getTop();
-            HBox translationRow = (HBox) header.getChildren().get(2);
-            VBox rangeSelectionsBox = (VBox) header.getChildren().get(3);
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
@@ -364,6 +409,9 @@ class MainViewFactoryTest {
         assertTrue(MainViewFactory.isRangeReady(4, 4));
         assertFalse(MainViewFactory.isRangeReady(null, 4));
         assertFalse(MainViewFactory.isRangeReady(4, null));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("numerikus billentyűzet + gombjával"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("numerikus billentyűzet + gombja"));
+        assertTrue(mainViewFactory.rangeHelpContentText().contains("↺ gomb"));
         assertEquals("A(z) 3. szakaszhoz válaszd ki a kezdő és záró verset.", MainViewFactory.rangeSelectionStatus(3, null, null));
         assertEquals("A(z) 3. szakaszhoz válassz kezdő verset, amely nem nagyobb a záró versnél.", MainViewFactory.rangeSelectionStatus(3, null, 5));
         assertEquals("A(z) 3. szakaszhoz válassz záró verset, amely nem kisebb a kezdő versnél.", MainViewFactory.rangeSelectionStatus(3, 5, null));
@@ -384,6 +432,39 @@ class MainViewFactoryTest {
                 () -> mainViewFactory.formatVerseRangesText(List.of())
         );
         assertEquals("Legalább egy formázott szakasz szükséges.", emptyRangesException.getMessage());
+    }
+
+    @Test
+    void formatVerseRangeTextUsesExpandedCanonicalBookAliases() {
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
+        Map<String, String> expectedCanonicalNamesByInput = new LinkedHashMap<>();
+        expectedCanonicalNamesByInput.put("Énekek", "Énekek éneke");
+        expectedCanonicalNamesByInput.put("Énekek éneke", "Énekek éneke");
+        expectedCanonicalNamesByInput.put("Ámós", "Ámós");
+        expectedCanonicalNamesByInput.put("Ámósz", "Ámós");
+        expectedCanonicalNamesByInput.put("Sofóniás", "Sofóniás");
+        expectedCanonicalNamesByInput.put("Zofóniás", "Sofóniás");
+        expectedCanonicalNamesByInput.put("Aggeus", "Aggeus");
+        expectedCanonicalNamesByInput.put("Haggeus", "Aggeus");
+        expectedCanonicalNamesByInput.put("Apostolok Cselekedetei", "Apostolok Cselekedetei");
+        expectedCanonicalNamesByInput.put("Cselekedetek", "Apostolok Cselekedetei");
+        expectedCanonicalNamesByInput.put("1Korintus", "1Korintus");
+        expectedCanonicalNamesByInput.put("1Korinthus", "1Korintus");
+        expectedCanonicalNamesByInput.put("2Korintus", "2Korintus");
+        expectedCanonicalNamesByInput.put("2Korinthus", "2Korintus");
+        expectedCanonicalNamesByInput.put("1Thessalonika", "1Thessalonika");
+        expectedCanonicalNamesByInput.put("1Thesszalonika", "1Thessalonika");
+        expectedCanonicalNamesByInput.put("2Thessalonika", "2Thessalonika");
+        expectedCanonicalNamesByInput.put("2Thesszalonika", "2Thessalonika");
+
+        expectedCanonicalNamesByInput.forEach((inputBookName, expectedCanonicalName) -> assertTrue(
+                mainViewFactory.formatVerseRangeText(
+                        List.of(new VerseRow("Revideált Károli", inputBookName, 1, 1, "Szöveg")),
+                        1,
+                        1
+                ).startsWith(expectedCanonicalName + " 1:1"),
+                () -> "Expected canonical book name for " + inputBookName
+        ));
     }
 
     @Test
@@ -468,9 +549,9 @@ class MainViewFactoryTest {
         FxTestSupport.runOnFxThread(() -> {
             Parent parent = mainViewFactory.createRoot();
             BorderPane root = (BorderPane) parent;
-            VBox header = (VBox) root.getTop();
-            HBox translationRow = (HBox) header.getChildren().get(2);
-            VBox rangeSelectionsBox = (VBox) header.getChildren().get(3);
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
@@ -507,9 +588,9 @@ class MainViewFactoryTest {
         FxTestSupport.runOnFxThread(() -> {
             Parent parent = mainViewFactory.createRoot();
             BorderPane root = (BorderPane) parent;
-            VBox header = (VBox) root.getTop();
-            HBox translationRow = (HBox) header.getChildren().get(2);
-            VBox rangeSelectionsBox = (VBox) header.getChildren().get(3);
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
@@ -545,6 +626,220 @@ class MainViewFactoryTest {
     }
 
     @Test
+    void createRootUsesScrollableLayoutWithTextDropdownsAndNumericQuickSelection() {
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        when(uiSessionService.loadSession()).thenReturn(Optional.empty());
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 4, 1, "Kezdet"),
+                new VerseRow("Revideált Károli", "1. Mózes", 5, 1, "Ötödik fejezet első verse"),
+                new VerseRow("Revideált Károli", "1. Mózes", 5, 10, "Ötödik fejezet tizedik verse"),
+                new VerseRow("Revideált Károli", "Zsoltárok", 23, 1, "Az Úr az én pásztorom")
+        )), uiSessionService);
+
+        FxTestSupport.runOnFxThread(() -> {
+            Parent parent = mainViewFactory.createRoot();
+            BorderPane root = (BorderPane) parent;
+            ScrollPane pageScrollPane = assertInstanceOf(ScrollPane.class, root.getCenter());
+            VBox mainContent = assertInstanceOf(VBox.class, pageScrollPane.getContent());
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+
+            ComboBox<String> translationBox = comboBox(translationRow, 0);
+            HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            ComboBox<String> bookBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
+
+            assertFalse(translationBox.isEditable());
+            assertFalse(bookBox.isEditable());
+            assertTrue(chapterBox.isEditable());
+            assertTrue(fromVerseBox.isEditable());
+            assertTrue(toVerseBox.isEditable());
+
+            translationBox.setValue("Revideált Károli");
+            bookBox.setValue("1. Mózes");
+            chapterBox.getEditor().setText("5");
+            assertEquals(5, chapterBox.getValue());
+            assertEquals(List.of(4, 5), nonNullItems(chapterBox));
+
+            fromVerseBox.getEditor().setText("10");
+            assertEquals(10, fromVerseBox.getValue());
+            assertEquals(List.of(1, 10), nonNullItems(fromVerseBox));
+
+            toVerseBox.getEditor().setText("2");
+            assertNull(toVerseBox.getValue());
+            assertEquals("", toVerseBox.getEditor().getText());
+
+            toVerseBox.getEditor().setText("10");
+            assertEquals(10, toVerseBox.getValue());
+            assertEquals(List.of(10), nonNullItems(toVerseBox));
+            return null;
+        });
+    }
+
+    @Test
+    void privateNumericQuickSelectionHelpersHandleValidInvalidAndBlankInput() throws Exception {
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
+
+        FxTestSupport.runOnFxThread(() -> {
+            ComboBox<Integer> comboBox = new ComboBox<>();
+            invokePrivate(mainViewFactory, "configureNumericQuickSelection", new Class<?>[]{ComboBox.class, String.class}, comboBox, "Fejezet");
+            invokePrivate(mainViewFactory, "replaceComboBoxItems", new Class<?>[]{ComboBox.class, List.class}, comboBox, List.of(4, 14, 24));
+            assertEquals("14", comboBox.getConverter().toString(14));
+            assertEquals(24, comboBox.getConverter().fromString("24"));
+            assertNull(comboBox.getConverter().fromString("nem szám"));
+
+            comboBox.getEditor().setText("4");
+            assertEquals(4, comboBox.getValue());
+            assertEquals(List.of(4, 14, 24), nonNullItems(comboBox));
+
+            triggerEditorAction(comboBox);
+            assertEquals(4, comboBox.getValue());
+
+            comboBox.getEditor().setText("nem szám");
+            assertEquals("4", comboBox.getEditor().getText());
+
+            comboBox.getEditor().setText("2");
+            assertEquals("2", comboBox.getEditor().getText());
+            assertNull(comboBox.getValue());
+
+            comboBox.getEditor().setText("99");
+            triggerEditorAction(comboBox);
+            assertNull(comboBox.getValue());
+            assertEquals("", comboBox.getEditor().getText());
+
+            comboBox.setValue(14);
+            invokePrivate(mainViewFactory, "applyNumericQuickSelection", new Class<?>[]{ComboBox.class, String.class}, comboBox, "");
+            assertNull(comboBox.getValue());
+
+            comboBox.getEditor().setText("");
+            triggerEditorAction(comboBox);
+            assertNull(comboBox.getValue());
+            assertNull(comboBox.getItems().getFirst());
+            return null;
+        });
+
+        assertNull(invokePrivate(mainViewFactory, "parseInteger", new Class<?>[]{String.class}, (Object) null));
+        assertNull(invokePrivate(mainViewFactory, "parseInteger", new Class<?>[]{String.class}, "abc"));
+        assertEquals(14, invokePrivate(mainViewFactory, "parseInteger", new Class<?>[]{String.class}, " 14 "));
+    }
+
+    @Test
+    void privateNumericListenersCoverFocusShowAndNullTranslationPaths() throws Exception {
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
+
+        FxTestSupport.runOnFxThread(() -> {
+            ComboBox<Integer> comboBox = new ComboBox<>();
+            invokePrivate(mainViewFactory, "configureNumericQuickSelection", new Class<?>[]{ComboBox.class, String.class}, comboBox, "Fejezet");
+            invokePrivate(mainViewFactory, "replaceComboBoxItems", new Class<?>[]{ComboBox.class, List.class}, comboBox, List.of(4, 14));
+
+            Stage stage = new Stage();
+            try {
+                stage.setScene(new Scene(new VBox(comboBox), 320, 120));
+                stage.show();
+                comboBox.show();
+
+                invokePrivate(
+                        mainViewFactory,
+                        "lambda$configureNumericQuickSelection$3",
+                        new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class},
+                        comboBox,
+                        comboBox.getEditor().focusedProperty(),
+                        Boolean.FALSE,
+                        Boolean.TRUE
+                );
+
+                invokePrivate(mainViewFactory, "applyNumericQuickSelection", new Class<?>[]{ComboBox.class, String.class}, comboBox, "14");
+                assertTrue(comboBox.isShowing());
+
+                comboBox.getEditor().setText("4");
+                invokePrivate(
+                        mainViewFactory,
+                        "lambda$configureNumericQuickSelection$3",
+                        new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class},
+                        comboBox,
+                        comboBox.getEditor().focusedProperty(),
+                        Boolean.TRUE,
+                        Boolean.FALSE
+                );
+                assertEquals(4, comboBox.getValue());
+            } finally {
+                stage.close();
+            }
+
+            Object rangeSelection = invokePrivate(mainViewFactory, "createRangeSelectionControls", new Class<?>[]{Runnable.class}, (Runnable) () -> {
+            });
+            Class<?> rangeSelectionClass = rangeSelection.getClass();
+
+            invokePrivate(
+                    mainViewFactory,
+                    "lambda$createRangeSelectionControls$1",
+                    new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, String.class, String.class},
+                    rangeSelection,
+                    (Runnable) () -> {
+                    },
+                    null,
+                    null,
+                    "1. Mózes"
+            );
+            invokePrivate(
+                    mainViewFactory,
+                    "lambda$createRangeSelectionControls$2",
+                    new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, Integer.class, Integer.class},
+                    rangeSelection,
+                    (Runnable) () -> {
+                    },
+                    null,
+                    null,
+                    4
+            );
+            return null;
+        });
+    }
+
+    @Test
+    void createRootRejectsTypedImpossibleToVerseAndKeepsCopyDisabled() {
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        when(uiSessionService.loadSession()).thenReturn(Optional.empty());
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 1, "Első vers"),
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 2, "Második vers"),
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 4, "Negyedik vers")
+        )), uiSessionService);
+
+        FxTestSupport.runOnFxThread(() -> {
+            Parent parent = mainViewFactory.createRoot();
+            BorderPane root = (BorderPane) parent;
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+
+            ComboBox<String> translationBox = comboBox(translationRow, 0);
+            Button copyButton = (Button) translationRow.getChildren().get(3);
+            HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            ComboBox<String> bookBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
+
+            translationBox.setValue("Revideált Károli");
+            bookBox.setValue("1. Mózes");
+            chapterBox.setValue(1);
+            fromVerseBox.setValue(4);
+
+            assertTrue(copyButton.isDisable());
+
+            toVerseBox.getEditor().setText("2");
+
+            assertEquals("", toVerseBox.getEditor().getText());
+            assertNull(toVerseBox.getValue());
+            assertTrue(copyButton.isDisable());
+            return null;
+        });
+    }
+
+    @Test
     void createRootCanBeShownInStage() {
         MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
                 new VerseRow("Revideált Károli", "1. Mózes", 4, 4, "Ábel is vitt elsőszülött juhai közül.")
@@ -567,6 +862,25 @@ class MainViewFactoryTest {
     @SuppressWarnings("unchecked")
     private <T> ComboBox<T> comboBox(HBox row, int index) {
         return (ComboBox<T>) row.getChildren().get(index);
+    }
+
+    private VBox mainContent(BorderPane root) {
+        ScrollPane pageScrollPane = assertInstanceOf(ScrollPane.class, root.getCenter());
+        return assertInstanceOf(VBox.class, pageScrollPane.getContent());
+    }
+
+    private <T> List<T> nonNullItems(ComboBox<T> comboBox) {
+        return comboBox.getItems().stream().filter(item -> item != null).toList();
+    }
+
+    private void triggerEditorAction(ComboBox<?> comboBox) {
+        comboBox.getEditor().getOnAction().handle(new ActionEvent());
+    }
+
+    private Object invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
+        Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
+        method.setAccessible(true);
+        return method.invoke(target, args);
     }
 
     private static final class TestMainViewFactory extends MainViewFactory {
