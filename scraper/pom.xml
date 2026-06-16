@@ -7,7 +7,7 @@
     <parent>
         <groupId>hu.szegedibibliaszol</groupId>
         <artifactId>bible-verse-tool</artifactId>
-        <version>1.1.0</version>
+        <version>1.1.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>scraper</artifactId>
