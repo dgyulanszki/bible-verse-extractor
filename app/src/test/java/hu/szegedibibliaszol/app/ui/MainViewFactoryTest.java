@@ -7,6 +7,7 @@ import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,8 +75,10 @@ class MainViewFactoryTest {
             HBox addRangeRow = (HBox) mainContent.getChildren().get(5);
             Label statusLabel = (Label) mainContent.getChildren().get(6);
             Label titleLabel = assertInstanceOf(Label.class, mainContent.getChildren().getFirst());
+            Label subtitleLabel = assertInstanceOf(Label.class, mainContent.getChildren().get(1));
             ComboBox<String> translationBox = comboBox(translationRow, 0);
-            Button generalHelpButton = (Button) generalHelpRow.getChildren().getFirst();
+            Button tutorialButton = (Button) generalHelpRow.getChildren().getFirst();
+            Button generalHelpButton = (Button) generalHelpRow.getChildren().get(1);
             Button addRangeButton = (Button) addRangeRow.getChildren().getFirst();
             Button saveButton = (Button) translationRow.getChildren().get(2);
             Button copyButton = (Button) translationRow.getChildren().get(3);
@@ -100,6 +104,7 @@ class MainViewFactoryTest {
             assertEquals("Kezdő vers", firstFromVerseBox.getPromptText());
             assertEquals("Záró vers", firstToVerseBox.getPromptText());
             assertEquals("Szakasz 1", firstRangeLabel.getText());
+            assertEquals("Útmutató", tutorialButton.getText());
             assertEquals("?", generalHelpButton.getText());
             assertEquals("?", firstRangeHelpButton.getText());
             assertEquals("↺", firstResetButton.getText());
@@ -113,6 +118,14 @@ class MainViewFactoryTest {
             assertTrue(firstRemoveButton.isDisable());
             assertTrue(instructionsLabel.getText().contains("nem jelenik meg verslista"));
             assertTrue(addRangeButton.getTooltip().getText().contains("Numpad +"));
+            assertEquals("Az aktuális munkamenet mentése (Ctrl+S)", saveButton.getTooltip().getText());
+            assertEquals("Az összes kész szakasz másolása a vágólapra (Ctrl+C)", copyButton.getTooltip().getText());
+            assertEquals("Az összes kijelölés alaphelyzetbe állítása (Ctrl+R)", resetButton.getTooltip().getText());
+            assertTrue(tutorialButton.getTooltip().getText().contains("Gyors kezdési útmutató"));
+            assertEquals(MainViewFactory.APPLICATION_TITLE, titleLabel.getTooltip().getText());
+            assertTrue(subtitleLabel.getTooltip().getText().contains("egy vagy több igerészletet"));
+            assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getTooltip().getText());
+            assertTrue(translationBox.getTooltip().getText().contains("Fordítás kiválasztása"));
             assertEquals(96, firstRangeLabel.getPrefWidth());
             assertTrue(titleLabel.getStyle().contains("white"));
             assertTrue(translationRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
@@ -126,6 +139,8 @@ class MainViewFactoryTest {
 
             translationBox.setValue("Revideált Károli");
             assertEquals("A fordítás kiválasztva. Válassz könyvet a szakaszokhoz.", statusLabel.getText());
+            assertEquals("A fordítás kiválasztva. Válassz könyvet a szakaszokhoz.", statusLabel.getTooltip().getText());
+            assertEquals("Kiválasztott fordítás: Revideált Károli", translationBox.getTooltip().getText());
             assertFalse(addRangeButton.isDisable());
             assertEquals(3, firstBookBox.getItems().size());
             assertNull(firstBookBox.getItems().getFirst());
@@ -134,12 +149,14 @@ class MainViewFactoryTest {
 
             firstBookBox.setValue("1. Mózes");
             assertEquals("A(z) 1. szakaszban a könyv kiválasztva. Válassz fejezetet.", firstRangeStatus.getText());
+            assertEquals("Kiválasztott könyv: 1. Mózes", firstBookBox.getTooltip().getText());
             assertEquals(2, firstChapterBox.getItems().size());
             assertNull(firstChapterBox.getItems().get(0));
             assertEquals(4, firstChapterBox.getItems().get(1));
 
             firstChapterBox.setValue(4);
             assertEquals("A(z) 1. szakaszhoz válaszd ki a kezdő és záró verset.", firstRangeStatus.getText());
+            assertEquals("Kiválasztott fejezet: 4", firstChapterBox.getTooltip().getText());
             assertEquals(3, firstFromVerseBox.getItems().size());
             assertNull(firstFromVerseBox.getItems().get(0));
             assertEquals(4, firstFromVerseBox.getItems().get(1));
@@ -228,7 +245,16 @@ class MainViewFactoryTest {
             ));
             assertEquals("A munkamenet elmentve.", statusLabel.getText());
 
-            copyButton.fire();
+            root.fireEvent(ctrlShortcutEvent(KeyCode.S));
+            verify(uiSessionService, times(2)).saveSession(new AppSessionSnapshot(
+                    "Revideált Károli",
+                    List.of(
+                            new RangeSelectionSnapshot("1. Mózes", 4, 4, 4),
+                            new RangeSelectionSnapshot("Zsoltárok", 23, 1, 2)
+                    )
+            ));
+
+            root.fireEvent(ctrlShortcutEvent(KeyCode.C));
             assertEquals("A kijelölt szakaszok a vágólapra kerültek.", statusLabel.getText());
             assertEquals(
                     "1Mózes 4:4" + System.lineSeparator() + System.lineSeparator()
@@ -246,7 +272,7 @@ class MainViewFactoryTest {
             assertEquals(1, rangeSelectionsBox.getChildren().size());
             assertFalse(copyButton.isDisable());
 
-            resetButton.fire();
+            root.fireEvent(ctrlShortcutEvent(KeyCode.R));
             assertNull(translationBox.getValue());
             assertTrue(addRangeButton.isDisable());
             assertTrue(copyButton.isDisable());
@@ -266,6 +292,7 @@ class MainViewFactoryTest {
                 List.of(new RangeSelectionSnapshot("1. Mózes", 4, 4, 4))
         )));
         Alert generalHelpAlert = mock(Alert.class);
+        Alert tutorialAlert = mock(Alert.class);
         Alert translationHelpAlert = mock(Alert.class);
         Alert rangeHelpAlert = mock(Alert.class);
         TestMainViewFactory mainViewFactory = new TestMainViewFactory(
@@ -275,6 +302,7 @@ class MainViewFactoryTest {
                 )),
                 uiSessionService,
                 generalHelpAlert,
+                tutorialAlert,
                 translationHelpAlert,
                 rangeHelpAlert
         );
@@ -293,7 +321,8 @@ class MainViewFactoryTest {
             Label statusLabel = (Label) mainContent.getChildren().get(6);
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             Button translationHelpButton = (Button) translationRow.getChildren().get(1);
-            Button generalHelpButton = (Button) generalHelpRow.getChildren().getFirst();
+            Button tutorialButton = (Button) generalHelpRow.getChildren().getFirst();
+            Button generalHelpButton = (Button) generalHelpRow.getChildren().get(1);
 
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
             ComboBox<String> bookBox = comboBox(rangeRow, 1);
@@ -309,9 +338,11 @@ class MainViewFactoryTest {
             assertEquals(4, toVerseBox.getValue());
             assertEquals("Az előző munkamenet automatikusan betöltődött.", statusLabel.getText());
 
+            tutorialButton.fire();
             generalHelpButton.fire();
             translationHelpButton.fire();
             rangeHelpButton.fire();
+            verify(tutorialAlert).showAndWait();
             verify(generalHelpAlert).showAndWait();
             verify(translationHelpAlert).showAndWait();
             verify(rangeHelpAlert).showAndWait();
@@ -391,27 +422,45 @@ class MainViewFactoryTest {
 
         FxTestSupport.runOnFxThread(() -> {
             Alert generalHelpAlert = mainViewFactory.createGeneralHelpAlert();
+            Alert tutorialHelpAlert = mainViewFactory.createTutorialAlert();
             Alert translationHelpAlert = mainViewFactory.createTranslationHelpAlert();
             Alert rangeHelpAlert = mainViewFactory.createRangeHelpAlert();
 
             assertEquals("Súgó", generalHelpAlert.getTitle());
             assertEquals(MainViewFactory.GENERAL_HELP_HEADER_TEXT, generalHelpAlert.getHeaderText());
             assertEquals(mainViewFactory.generalHelpContentText(), generalHelpAlert.getContentText());
+            assertEquals("Útmutató", tutorialHelpAlert.getTitle());
+            assertEquals(MainViewFactory.TUTORIAL_HEADER_TEXT, tutorialHelpAlert.getHeaderText());
+            assertEquals(mainViewFactory.tutorialContentText(), tutorialHelpAlert.getContentText());
             assertEquals(MainViewFactory.TRANSLATION_HELP_HEADER_TEXT, translationHelpAlert.getHeaderText());
             assertEquals(MainViewFactory.RANGE_HELP_HEADER_TEXT, rangeHelpAlert.getHeaderText());
 
             generalHelpAlert.close();
+            tutorialHelpAlert.close();
             translationHelpAlert.close();
             rangeHelpAlert.close();
             return null;
         });
 
         assertTrue(MainViewFactory.isRangeReady(4, 4));
-        assertFalse(MainViewFactory.isRangeReady(null, 4));
-        assertFalse(MainViewFactory.isRangeReady(4, null));
+        assertFalse(MainViewFactory.isRangeReady(nullInteger(), 4));
+        assertFalse(MainViewFactory.isRangeReady(4, nullInteger()));
         assertTrue(mainViewFactory.generalHelpContentText().contains("numerikus billentyűzet + gombjával"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+S"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+C"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+R"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Útmutató gomb"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("buboréksúgóban"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Gyors kezdés"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+S"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+C"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+R"));
         assertTrue(mainViewFactory.translationHelpContentText().contains("numerikus billentyűzet + gombja"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+S"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+C"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+R"));
         assertTrue(mainViewFactory.rangeHelpContentText().contains("↺ gomb"));
+        assertTrue(mainViewFactory.rangeHelpContentText().contains("buboréksúgóban"));
         assertEquals("A(z) 3. szakaszhoz válaszd ki a kezdő és záró verset.", MainViewFactory.rangeSelectionStatus(3, null, null));
         assertEquals("A(z) 3. szakaszhoz válassz kezdő verset, amely nem nagyobb a záró versnél.", MainViewFactory.rangeSelectionStatus(3, null, 5));
         assertEquals("A(z) 3. szakaszhoz válassz záró verset, amely nem kisebb a kezdő versnél.", MainViewFactory.rangeSelectionStatus(3, 5, null));
@@ -472,6 +521,7 @@ class MainViewFactoryTest {
         TestMainViewFactory mainViewFactory = new TestMainViewFactory(
                 new VerseBrowserService(List.of()),
                 mock(UiSessionService.class),
+                mock(Alert.class),
                 mock(Alert.class),
                 mock(Alert.class),
                 mock(Alert.class)
@@ -726,7 +776,7 @@ class MainViewFactoryTest {
     }
 
     @Test
-    void privateNumericListenersCoverFocusShowAndNullTranslationPaths() throws Exception {
+    void privateNumericListenersCoverFocusShowAndNullTranslationPaths() {
         MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
 
         FxTestSupport.runOnFxThread(() -> {
@@ -742,7 +792,11 @@ class MainViewFactoryTest {
 
                 invokePrivate(
                         mainViewFactory,
-                        "lambda$configureNumericQuickSelection$3",
+                        syntheticMethodName(
+                                mainViewFactory,
+                                "lambda$configureNumericQuickSelection$",
+                                new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class}
+                        ),
                         new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class},
                         comboBox,
                         comboBox.getEditor().focusedProperty(),
@@ -756,7 +810,11 @@ class MainViewFactoryTest {
                 comboBox.getEditor().setText("4");
                 invokePrivate(
                         mainViewFactory,
-                        "lambda$configureNumericQuickSelection$3",
+                        syntheticMethodName(
+                                mainViewFactory,
+                                "lambda$configureNumericQuickSelection$",
+                                new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class}
+                        ),
                         new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class},
                         comboBox,
                         comboBox.getEditor().focusedProperty(),
@@ -774,7 +832,11 @@ class MainViewFactoryTest {
 
             invokePrivate(
                     mainViewFactory,
-                    "lambda$createRangeSelectionControls$1",
+                    syntheticMethodName(
+                            mainViewFactory,
+                            "lambda$createRangeSelectionControls$",
+                            new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, String.class, String.class}
+                    ),
                     new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, String.class, String.class},
                     rangeSelection,
                     (Runnable) () -> {
@@ -785,7 +847,11 @@ class MainViewFactoryTest {
             );
             invokePrivate(
                     mainViewFactory,
-                    "lambda$createRangeSelectionControls$2",
+                    syntheticMethodName(
+                            mainViewFactory,
+                            "lambda$createRangeSelectionControls$",
+                            new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, Integer.class, Integer.class}
+                    ),
                     new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, Integer.class, Integer.class},
                     rangeSelection,
                     (Runnable) () -> {
@@ -877,15 +943,34 @@ class MainViewFactoryTest {
         comboBox.getEditor().getOnAction().handle(new ActionEvent());
     }
 
+    private KeyEvent ctrlShortcutEvent(KeyCode keyCode) {
+        return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", keyCode, false, true, false, false);
+    }
+
+    private Integer nullInteger() {
+        return null;
+    }
+
     private Object invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
         Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
         method.setAccessible(true);
         return method.invoke(target, args);
     }
 
+    private String syntheticMethodName(Object target, String methodPrefix, Class<?>[] parameterTypes) {
+        return Arrays.stream(target.getClass().getDeclaredMethods())
+                .filter(Method::isSynthetic)
+                .filter(method -> method.getName().startsWith(methodPrefix))
+                .filter(method -> Arrays.equals(method.getParameterTypes(), parameterTypes))
+                .map(Method::getName)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Synthetic method not found for prefix: " + methodPrefix));
+    }
+
     private static final class TestMainViewFactory extends MainViewFactory {
 
         private final Alert generalHelpAlert;
+        private final Alert tutorialHelpAlert;
         private final Alert translationHelpAlert;
         private final Alert rangeHelpAlert;
         private final ArrayDeque<Boolean> confirmationResponses = new ArrayDeque<>();
@@ -894,11 +979,13 @@ class MainViewFactoryTest {
                 VerseBrowserService verseBrowserService,
                 UiSessionService uiSessionService,
                 Alert generalHelpAlert,
+                Alert tutorialHelpAlert,
                 Alert translationHelpAlert,
                 Alert rangeHelpAlert
         ) {
             super(verseBrowserService, uiSessionService);
             this.generalHelpAlert = generalHelpAlert;
+            this.tutorialHelpAlert = tutorialHelpAlert;
             this.translationHelpAlert = translationHelpAlert;
             this.rangeHelpAlert = rangeHelpAlert;
         }
@@ -910,6 +997,11 @@ class MainViewFactoryTest {
         @Override
         Alert createGeneralHelpAlert() {
             return generalHelpAlert;
+        }
+
+        @Override
+        Alert createTutorialAlert() {
+            return tutorialHelpAlert;
         }
 
         @Override

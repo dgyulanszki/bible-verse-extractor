@@ -1,18 +1,21 @@
 package hu.szegedibibliaszol.app.service;
 
-import hu.szegedibibliaszol.app.entity.Verse;
-import hu.szegedibibliaszol.app.repository.VersesRepository;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class VerseBrowserServiceTest {
 
@@ -97,34 +100,13 @@ class VerseBrowserServiceTest {
     @Test
     void databaseBackedQueriesReadDistinctFilteredData() throws Exception {
         Path databasePath = Files.createTempFile("verse-browser-service", ".db");
-        VersesRepository versesRepository = mock(VersesRepository.class);
-        when(versesRepository.findTranslations()).thenReturn(List.of("Revideált Károli", "Károli"));
-        when(versesRepository.findBooksByTranslation("Revideált Károli")).thenReturn(List.of("1. Mózes", "2. Mózes"));
-        when(versesRepository.findChaptersByTranslationAndBook("Revideált Károli", "1. Mózes")).thenReturn(List.of(1));
-        when(versesRepository.findVersesByTranslationAndBookAndChapter("Revideált Károli", "1. Mózes", 1)).thenReturn(List.of(1, 2));
-        when(versesRepository.findByTranslationAndBookAndChapterOrderByVerseAsc("Revideált Károli", "1. Mózes", 1)).thenReturn(List.of(
-                new Verse("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet."),
-                new Verse("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
-        ));
-        when(versesRepository.findByTranslationAndBookAndChapterAndVerseOrderByVerseAsc("Revideált Károli", "1. Mózes", 1, 2)).thenReturn(List.of(
-                new Verse("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
-        ));
-        when(versesRepository.findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc(
-                "Revideált Károli",
-                "1. Mózes",
-                1,
-                1,
-                2
-        )).thenReturn(List.of(
-                new Verse("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet."),
-                new Verse("Revideált Károli", "1. Mózes", 1, 2, "A föld pedig kietlen és puszta volt.")
-        ));
+        populateVersesTable(databasePath);
 
-        VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
+        VerseBrowserService verseBrowserService = new VerseBrowserService(jdbcTemplate(databasePath), databasePath);
 
         assertEquals(List.of("Revideált Károli", "Károli"), verseBrowserService.getTranslations());
         assertEquals(List.of("1. Mózes", "2. Mózes"), verseBrowserService.getBooks("Revideált Károli"));
-        assertEquals(List.of(1), verseBrowserService.getChapters("Revideált Károli", "1. Mózes"));
+        assertEquals(List.of(1, 2), verseBrowserService.getChapters("Revideált Károli", "1. Mózes"));
         assertEquals(List.of(1, 2), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", 1));
         assertEquals(List.of(
                 new VerseRow("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet."),
@@ -142,7 +124,7 @@ class VerseBrowserServiceTest {
     @Test
     void databaseBackedQueriesReturnEmptyListsWhenDatabaseFileIsMissing() {
         VerseBrowserService verseBrowserService = new VerseBrowserService(
-                mock(VersesRepository.class),
+                mock(JdbcTemplate.class),
                 Path.of("target/non-existent-test-db.db")
         );
 
@@ -157,15 +139,7 @@ class VerseBrowserServiceTest {
     @Test
     void databaseBackedQueriesReturnEmptyListsWhenVersesTableIsMissing() throws Exception {
         Path databasePath = Files.createTempFile("verse-browser-service-missing-table", ".db");
-        VersesRepository versesRepository = mock(VersesRepository.class);
-        when(versesRepository.findTranslations()).thenThrow(new RuntimeException("no such table: verses"));
-        when(versesRepository.findBooksByTranslation("Revideált Károli")).thenThrow(new RuntimeException("no such table: verses"));
-        when(versesRepository.findChaptersByTranslationAndBook("Revideált Károli", "1. Mózes")).thenThrow(new RuntimeException("no such table: verses"));
-        when(versesRepository.findVersesByTranslationAndBookAndChapter("Revideált Károli", "1. Mózes", 1)).thenThrow(new RuntimeException("no such table: verses"));
-        when(versesRepository.findByTranslationAndBookAndChapterOrderByVerseAsc("Revideált Károli", "1. Mózes", 1)).thenThrow(new RuntimeException("no such table: verses"));
-        when(versesRepository.findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc("Revideált Károli", "1. Mózes", 1, 1, 2))
-                .thenThrow(new RuntimeException("no such table: verses"));
-        VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
+        VerseBrowserService verseBrowserService = new VerseBrowserService(jdbcTemplate(databasePath), databasePath);
 
         assertEquals(List.of(), verseBrowserService.getTranslations());
         assertEquals(List.of(), verseBrowserService.getBooks("Revideált Károli"));
@@ -178,13 +152,12 @@ class VerseBrowserServiceTest {
     @Test
     void databaseBackedQueriesReturnEmptyListsWhenVersesTableIsMissingInNestedCause() throws Exception {
         Path databasePath = Files.createTempFile("verse-browser-service-nested-missing-table", ".db");
-        VersesRepository versesRepository = mock(VersesRepository.class);
-        when(versesRepository.findTranslations()).thenThrow(new RuntimeException(
+        JdbcTemplate jdbcTemplate = new ThrowingJdbcTemplate(new RuntimeException(
                 "wrapper",
                 new RuntimeException("no such table: verses")
         ));
 
-        VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
+        VerseBrowserService verseBrowserService = new VerseBrowserService(jdbcTemplate, databasePath);
 
         assertEquals(List.of(), verseBrowserService.getTranslations());
     }
@@ -192,14 +165,60 @@ class VerseBrowserServiceTest {
     @Test
     void databaseBackedQueriesWrapUnexpectedSqlFailures() throws Exception {
         Path databasePath = Files.createTempFile("verse-browser-service-broken-connection", ".db");
-        VersesRepository versesRepository = mock(VersesRepository.class);
-        when(versesRepository.findTranslations()).thenThrow(new RuntimeException("broken repository"));
+        JdbcTemplate jdbcTemplate = new ThrowingJdbcTemplate(new RuntimeException("broken repository"));
 
-        VerseBrowserService verseBrowserService = new VerseBrowserService(versesRepository, databasePath);
+        VerseBrowserService verseBrowserService = new VerseBrowserService(jdbcTemplate, databasePath);
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, verseBrowserService::getTranslations);
 
         assertEquals("Could not read verses from SQLite database.", exception.getMessage());
         assertEquals("broken repository", exception.getCause().getMessage());
+    }
+
+    private JdbcTemplate jdbcTemplate(Path databasePath) {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName("org.sqlite.JDBC");
+        dataSource.setUrl("jdbc:sqlite:" + databasePath);
+        return new JdbcTemplate(dataSource);
+    }
+
+    private void populateVersesTable(Path databasePath) throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             Statement statement = connection.createStatement()) {
+            statement.execute("drop table if exists verses");
+            statement.execute("""
+                    create table verses (
+                        id integer primary key autoincrement,
+                        translation text not null,
+                        book text not null,
+                        chapter integer not null,
+                        verse integer not null,
+                        text text not null
+                    )
+                    """);
+            statement.execute("""
+                    insert into verses (translation, book, chapter, verse, text)
+                    values
+                    ('Revideált Károli', '1. Mózes', 1, 1, 'Kezdetben teremtette Isten az eget és a földet.'),
+                    ('Revideált Károli', '1. Mózes', 1, 2, 'A föld pedig kietlen és puszta volt.'),
+                    ('Revideált Károli', '1. Mózes', 2, 1, 'Így készült el az ég és a föld minden seregükkel együtt.'),
+                    ('Károli', '1. Mózes', 1, 1, 'Kezdetben teremté Isten az eget és a földet.'),
+                    ('Revideált Károli', '2. Mózes', 1, 1, 'Ezek pedig Izráel fiainak nevei')
+                    """);
+        }
+    }
+
+    private static final class ThrowingJdbcTemplate extends JdbcTemplate {
+
+        private final RuntimeException exception;
+
+        private ThrowingJdbcTemplate(RuntimeException exception) {
+            this.exception = exception;
+        }
+
+        @Override
+        public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
+            throw exception;
+        }
     }
 }

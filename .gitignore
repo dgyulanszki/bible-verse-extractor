@@ -26,6 +26,8 @@ replay_pid*
 # Maven build output
 target/
 **/target/
+app/dist/
+app/jpackage-temp/
 
 .idea/
 *.iml

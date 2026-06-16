@@ -1,27 +1,79 @@
 package hu.szegedibibliaszol.app.service;
 
-import hu.szegedibibliaszol.app.entity.Verse;
-import hu.szegedibibliaszol.app.repository.VersesRepository;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
 public class VerseBrowserService {
 
     private static final String VERSES_TABLE_NAME = "verses";
+    private static final String FIND_TRANSLATIONS_SQL = """
+            select translation
+            from verses
+            group by translation
+            order by min(id)
+            """;
+    private static final String FIND_BOOKS_BY_TRANSLATION_SQL = """
+            select book
+            from verses
+            where translation = ?
+            group by book
+            order by min(id)
+            """;
+    private static final String FIND_CHAPTERS_BY_TRANSLATION_AND_BOOK_SQL = """
+            select chapter
+            from verses
+            where translation = ? and book = ?
+            group by chapter
+            order by chapter
+            """;
+    private static final String FIND_VERSES_BY_TRANSLATION_AND_BOOK_AND_CHAPTER_SQL = """
+            select verse
+            from verses
+            where translation = ? and book = ? and chapter = ?
+            group by verse
+            order by verse
+            """;
+    private static final String FIND_VERSE_ROWS_BY_CHAPTER_SQL = """
+            select translation, book, chapter, verse, text
+            from verses
+            where translation = ? and book = ? and chapter = ?
+            order by verse
+            """;
+    private static final String FIND_VERSE_ROWS_BY_SINGLE_VERSE_SQL = """
+            select translation, book, chapter, verse, text
+            from verses
+            where translation = ? and book = ? and chapter = ? and verse = ?
+            order by verse
+            """;
+    private static final String FIND_VERSE_ROWS_BY_RANGE_SQL = """
+            select translation, book, chapter, verse, text
+            from verses
+            where translation = ? and book = ? and chapter = ? and verse between ? and ?
+            order by verse
+            """;
 
-    private final VersesRepository versesRepository;
+    private final JdbcTemplate jdbcTemplate;
     private final Path databasePath;
     private final List<VerseRow> inMemoryVerseRows;
     private final boolean databaseBacked;
+    // These small caches avoid repeating the same lookup queries during startup and normal UI use.
+    // They only store selection lists (translations/books/chapters/verses), not whole Bible chapters.
+    private volatile List<String> cachedTranslations;
+    private final Map<String, List<String>> cachedBooksByTranslation = new ConcurrentHashMap<>();
+    private final Map<BookSelection, List<Integer>> cachedChaptersByBook = new ConcurrentHashMap<>();
+    private final Map<ChapterSelection, List<Integer>> cachedVersesByChapter = new ConcurrentHashMap<>();
 
     public VerseBrowserService() {
         this(null, null, List.of(), false);
@@ -29,23 +81,30 @@ public class VerseBrowserService {
 
     @Autowired
     public VerseBrowserService(
-            VersesRepository versesRepository,
+            JdbcTemplate jdbcTemplate,
             @Value("${app.database.path:${user.home}/bible-verses.db}") String databasePath
     ) {
-        this(versesRepository, Path.of(databasePath), List.of(), true);
+        this(jdbcTemplate, Path.of(databasePath), List.of(), true);
     }
 
     public VerseBrowserService(List<VerseRow> verseRows) {
         this(null, null, verseRows, false);
     }
 
-    VerseBrowserService(VersesRepository versesRepository, Path databasePath) {
-        this(versesRepository, databasePath, List.of(), true);
+    VerseBrowserService(JdbcTemplate jdbcTemplate, Path databasePath) {
+        this(jdbcTemplate, databasePath, List.of(), true);
     }
 
     public List<String> getTranslations() {
         if (databaseBacked) {
-            return queryOrEmpty(versesRepository::findTranslations);
+            // The translation list is needed immediately on startup, so keeping one in-memory copy is cheap and useful.
+            List<String> translations = cachedTranslations;
+            if (translations != null) {
+                return translations;
+            }
+            List<String> loadedTranslations = queryOrEmpty(() -> queryStrings(FIND_TRANSLATIONS_SQL));
+            cachedTranslations = loadedTranslations;
+            return loadedTranslations;
         }
 
         return inMemoryVerseRows.stream()
@@ -60,7 +119,10 @@ public class VerseBrowserService {
         }
 
         if (databaseBacked) {
-            return queryOrEmpty(() -> versesRepository.findBooksByTranslation(translation));
+            return queryOrEmpty(() -> cachedBooksByTranslation.computeIfAbsent(
+                    translation,
+                    value -> queryStrings(FIND_BOOKS_BY_TRANSLATION_SQL, value)
+            ));
         }
 
         return streamByTranslation(translation)
@@ -75,7 +137,11 @@ public class VerseBrowserService {
         }
 
         if (databaseBacked) {
-            return queryOrEmpty(() -> versesRepository.findChaptersByTranslationAndBook(translation, book));
+            BookSelection selection = new BookSelection(translation, book);
+            return queryOrEmpty(() -> cachedChaptersByBook.computeIfAbsent(
+                    selection,
+                    value -> queryIntegers(FIND_CHAPTERS_BY_TRANSLATION_AND_BOOK_SQL, value.translation(), value.book())
+            ));
         }
 
         return streamByTranslationAndBook(translation, book)
@@ -90,7 +156,16 @@ public class VerseBrowserService {
         }
 
         if (databaseBacked) {
-            return queryOrEmpty(() -> versesRepository.findVersesByTranslationAndBookAndChapter(translation, book, chapter));
+            ChapterSelection selection = new ChapterSelection(translation, book, chapter);
+            return queryOrEmpty(() -> cachedVersesByChapter.computeIfAbsent(
+                    selection,
+                    value -> queryIntegers(
+                            FIND_VERSES_BY_TRANSLATION_AND_BOOK_AND_CHAPTER_SQL,
+                            value.translation(),
+                            value.book(),
+                            value.chapter()
+                    )
+            ));
         }
 
         return streamByChapterSelection(translation, book, chapter)
@@ -106,19 +181,10 @@ public class VerseBrowserService {
 
         if (databaseBacked) {
             if (verse == null) {
-                return queryOrEmpty(() -> versesRepository.findByTranslationAndBookAndChapterOrderByVerseAsc(
-                        translation,
-                        book,
-                        chapter
-                )).stream().map(this::toVerseRow).toList();
+                return queryOrEmpty(() -> queryVerseRows(FIND_VERSE_ROWS_BY_CHAPTER_SQL, translation, book, chapter));
             }
 
-            return queryOrEmpty(() -> versesRepository.findByTranslationAndBookAndChapterAndVerseOrderByVerseAsc(
-                    translation,
-                    book,
-                    chapter,
-                    verse
-            )).stream().map(this::toVerseRow).toList();
+            return queryOrEmpty(() -> queryVerseRows(FIND_VERSE_ROWS_BY_SINGLE_VERSE_SQL, translation, book, chapter, verse));
         }
 
         return streamByChapterSelection(translation, book, chapter)
@@ -138,13 +204,14 @@ public class VerseBrowserService {
         }
 
         if (databaseBacked) {
-            return queryOrEmpty(() -> versesRepository.findByTranslationAndBookAndChapterAndVerseBetweenOrderByVerseAsc(
+            return queryOrEmpty(() -> queryVerseRows(
+                    FIND_VERSE_ROWS_BY_RANGE_SQL,
                     translation,
                     book,
                     chapter,
                     fromVerse,
                     toVerse
-            )).stream().map(this::toVerseRow).toList();
+            ));
         }
 
         return streamByChapterSelection(translation, book, chapter)
@@ -153,12 +220,12 @@ public class VerseBrowserService {
     }
 
     private VerseBrowserService(
-            VersesRepository versesRepository,
+            JdbcTemplate jdbcTemplate,
             Path databasePath,
             List<VerseRow> verseRows,
             boolean databaseBacked
     ) {
-        this.versesRepository = versesRepository;
+        this.jdbcTemplate = jdbcTemplate;
         this.databasePath = databasePath;
         this.inMemoryVerseRows = List.copyOf(verseRows);
         this.databaseBacked = databaseBacked;
@@ -187,6 +254,8 @@ public class VerseBrowserService {
         try {
             return List.copyOf(querySupplier.get());
         } catch (RuntimeException ex) {
+            // A missing or not-yet-generated SQLite file should not stop the UI from opening.
+            // We return empty data for this case and only fail on unexpected database errors.
             if (isMissingVersesTable(ex)) {
                 return List.of();
             }
@@ -212,13 +281,31 @@ public class VerseBrowserService {
         return isMissingVersesTable(cause);
     }
 
-    private VerseRow toVerseRow(Verse verse) {
+    private List<String> queryStrings(String sql, Object... args) {
+        return List.copyOf(jdbcTemplate.query(sql, (resultSet, _) -> resultSet.getString(1), args));
+    }
+
+    private List<Integer> queryIntegers(String sql, Object... args) {
+        return List.copyOf(jdbcTemplate.query(sql, (resultSet, _) -> resultSet.getInt(1), args));
+    }
+
+    private List<VerseRow> queryVerseRows(String sql, Object... args) {
+        return List.copyOf(jdbcTemplate.query(sql, (resultSet, _) -> toVerseRow(resultSet), args));
+    }
+
+    private VerseRow toVerseRow(java.sql.ResultSet resultSet) throws java.sql.SQLException {
         return new VerseRow(
-                verse.getTranslation(),
-                verse.getBook(),
-                verse.getChapter(),
-                verse.getVerse(),
-                verse.getText()
+                resultSet.getString("translation"),
+                resultSet.getString("book"),
+                resultSet.getInt("chapter"),
+                resultSet.getInt("verse"),
+                resultSet.getString("text")
         );
+    }
+
+    private record BookSelection(String translation, String book) {
+    }
+
+    private record ChapterSelection(String translation, String book, Integer chapter) {
     }
 }

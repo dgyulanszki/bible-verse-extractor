@@ -13,8 +13,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -47,6 +45,7 @@ public class MainViewFactory {
     public static final String APPLICATION_TITLE = "Bibliai igeeszköz";
     static final String INITIAL_STATUS_MESSAGE = "Válassz fordítást a közös bibliaadatbázisból való igerészletek összeállításához.";
     static final String GENERAL_HELP_HEADER_TEXT = "Általános súgó";
+    static final String TUTORIAL_HEADER_TEXT = "Gyors útmutató";
     static final String TRANSLATION_HELP_HEADER_TEXT = "Fordítássor súgó";
     static final String RANGE_HELP_HEADER_TEXT = "Szakaszsor súgó";
     private static final String TRANSLATION_PLACEHOLDER = "Fordítás";
@@ -95,6 +94,7 @@ public class MainViewFactory {
         Button saveButton = new Button("Mentés");
         Button copyButton = new Button("Másolás");
         Button resetButton = new Button("Alaphelyzet");
+        Button tutorialButton = new Button("Útmutató");
         Button generalHelpButton = createHelpButton("Az általános súgó megnyitása");
         Label statusLabel = new Label(INITIAL_STATUS_MESSAGE);
         VBox rangeSelectionsBox = new VBox(10);
@@ -106,16 +106,27 @@ public class MainViewFactory {
 
         configurePlaceholderDisplay(translationBox, TRANSLATION_PLACEHOLDER);
         setComboBoxItems(translationBox, verseBrowserService.getTranslations());
+        configureSelectionTooltip(
+                translationBox,
+                "Fordítás kiválasztása a közös bibliaadatbázisból.",
+                "Kiválasztott fordítás: "
+        );
         addRangeButton.setTooltip(new Tooltip("Új szakasz hozzáadása (Numpad +)"));
         addRangeButton.setDisable(true);
         addRangeButton.setStyle(primaryButtonStyle());
         copyButton.setDisable(true);
+        saveButton.setTooltip(new Tooltip("Az aktuális munkamenet mentése (Ctrl+S)"));
+        copyButton.setTooltip(new Tooltip("Az összes kész szakasz másolása a vágólapra (Ctrl+C)"));
+        resetButton.setTooltip(new Tooltip("Az összes kijelölés alaphelyzetbe állítása (Ctrl+R)"));
         saveButton.setStyle(secondaryButtonStyle());
         copyButton.setStyle(primaryButtonStyle());
         resetButton.setStyle(secondaryButtonStyle());
+        tutorialButton.setStyle(primaryButtonStyle());
+        tutorialButton.setTooltip(new Tooltip("Gyors kezdési útmutató megnyitása új felhasználóknak"));
         translationHelpButton.setStyle(helpButtonStyle());
         generalHelpButton.setStyle(helpButtonStyle());
         statusLabel.setStyle("-fx-text-fill: " + PANEL_WHITE + "; -fx-font-weight: bold;");
+        bindLabelTooltip(statusLabel);
 
         Runnable refreshCopyState = () -> copyButton.setDisable(!isCopyReady(translationBox.getValue(), rangeSelections));
         rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState);
@@ -137,6 +148,7 @@ public class MainViewFactory {
         });
 
         translationHelpButton.setOnAction(_ -> createTranslationHelpAlert().showAndWait());
+        tutorialButton.setOnAction(_ -> createTutorialAlert().showAndWait());
         generalHelpButton.setOnAction(_ -> createGeneralHelpAlert().showAndWait());
 
         addRangeButton.setOnAction(_ -> {
@@ -193,7 +205,7 @@ public class MainViewFactory {
             statusLabel.setText(INITIAL_STATUS_MESSAGE);
         });
 
-        HBox generalHelpRow = new HBox(generalHelpButton);
+        HBox generalHelpRow = new HBox(8, tutorialButton, generalHelpButton);
         generalHelpRow.setAlignment(Pos.CENTER_RIGHT);
         generalHelpRow.setPadding(new Insets(0, 12, 0, 12));
 
@@ -212,10 +224,12 @@ public class MainViewFactory {
 
         Label titleLabel = new Label(APPLICATION_TITLE);
         titleLabel.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;");
+        bindLabelTooltip(titleLabel);
 
         Label subtitleLabel = new Label("Válassz fordítást, állíts össze egy vagy több igerészletet, majd másold a szöveget a vágólapra.");
         subtitleLabel.setWrapText(true);
         subtitleLabel.setStyle("-fx-text-fill: " + PALE_BLUE + ";");
+        bindLabelTooltip(subtitleLabel);
 
         VBox mainContent = new VBox(6,
                 titleLabel,
@@ -238,7 +252,7 @@ public class MainViewFactory {
         mainScrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         mainScrollPane.setStyle("-fx-background: " + DEEP_BLUE + "; -fx-background-color: transparent;");
         root.setCenter(mainScrollPane);
-        registerKeyboardShortcuts(root, addRangeButton);
+        registerKeyboardShortcuts(root, addRangeButton, saveButton, copyButton, resetButton);
 
         HBox.setHgrow(translationBox, Priority.ALWAYS);
 
@@ -251,6 +265,10 @@ public class MainViewFactory {
         return createInformationAlert("Súgó", GENERAL_HELP_HEADER_TEXT, generalHelpContentText());
     }
 
+    Alert createTutorialAlert() {
+        return createInformationAlert("Útmutató", TUTORIAL_HEADER_TEXT, tutorialContentText());
+    }
+
     Alert createTranslationHelpAlert() {
         return createInformationAlert("Súgó", TRANSLATION_HELP_HEADER_TEXT, translationHelpContentText());
     }
@@ -260,31 +278,56 @@ public class MainViewFactory {
     }
 
     String generalHelpContentText() {
-        return "1. Válassz fordítást.\n"
-                + "2. Add hozzá a szükséges szakaszsorokat a + gombbal vagy a numerikus billentyűzet + gombjával.\n"
-                + "3. Minden sorban válassz könyvet, fejezetet, majd kezdő és záró verset.\n"
-                + "4. A ↺ gomb csak az adott szakaszsort állítja vissza alaphelyzetbe.\n"
-                + "5. A kezdő és záró vers lehet azonos is.\n"
-                + "6. A Másolás gomb az összes kész szakaszt egyetlen blokkba másolja.\n"
-                + "7. A Mentés gombbal vagy az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.";
+        return """
+                1. Válassz fordítást.
+                2. Add hozzá a szükséges szakaszsorokat a + gombbal vagy a numerikus billentyűzet + gombjával.
+                3. Minden sorban válassz könyvet, fejezetet, majd kezdő és záró verset.
+                4. A ↺ gomb csak az adott szakaszsort állítja vissza alaphelyzetbe.
+                5. A kezdő és záró vers lehet azonos is.
+                6. Az Útmutató gomb új felhasználóknak rövid, lépésenkénti kezdési segítséget ad.
+                7. A Mentés gomb vagy a Ctrl+S billentyűparancs kézzel elmenti az aktuális munkamenetet.
+                8. A Másolás gomb vagy a Ctrl+C billentyűparancs az összes kész szakaszt egyetlen blokkba másolja.
+                9. Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
+                10. Ha egy felirat rövidítve látszik, vidd fölé az egeret: a teljes szöveg buboréksúgóban megjelenik.
+                11. Az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.
+                """;
+    }
+
+    String tutorialContentText() {
+        return """
+                Gyors kezdés:
+                1. Válassz egy fordítást a felső legördülőből.
+                2. Ha több szakasz kell, kattints a + gombra vagy nyomd meg a numerikus billentyűzet + gombját.
+                3. Minden szakaszsorban válassz könyvet, fejezetet, kezdő verset és záró verset.
+                4. Ha egy sort törölnél vagy újrakezdenél, használd a - vagy a ↺ gombot.
+                5. Ha elkészültél, a Másolás gombbal vagy a Ctrl+C billentyűparanccsal másold a szöveget a vágólapra.
+                6. A Mentés gombbal vagy a Ctrl+S billentyűparanccsal mentsd el a munkamenetet.
+                7. Az Alaphelyzet gombbal vagy a Ctrl+R billentyűparanccsal mindent lenullázhatsz.
+                8. Ha valamelyik felirat rövidítve látszik, vidd fölé az egeret a teljes buboréksúgóért.
+                """;
     }
 
     String translationHelpContentText() {
-        return "A fordítássorban választhatod ki a közös fordítást minden szakaszhoz.\n"
-                + "- A + gomb vagy a numerikus billentyűzet + gombja új szakaszsort ad hozzá.\n"
-                + "- A Mentés gomb kézzel elmenti az aktuális munkamenetet.\n"
-                + "- A Másolás gomb az összes kész szakaszt a vágólapra másolja.\n"
-                + "- Az Alaphelyzet gomb törli az aktuális kijelöléseket.\n"
-                + "- A fordítás módosítását a program megerősítteti, ha már van kitöltött alsó szintű választás.";
+        return """
+                A fordítássorban választhatod ki a közös fordítást minden szakaszhoz.
+                - A + gomb vagy a numerikus billentyűzet + gombja új szakaszsort ad hozzá.
+                - A Mentés gomb vagy a Ctrl+S billentyűparancs kézzel elmenti az aktuális munkamenetet.
+                - A Másolás gomb vagy a Ctrl+C billentyűparancs az összes kész szakaszt a vágólapra másolja.
+                - Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
+                - A fordítás módosítását a program megerősítteti, ha már van kitöltött alsó szintű választás.
+                """;
     }
 
     String rangeHelpContentText() {
-        return "Minden szakaszsorban ugyanahhoz a fordításhoz választhatod könyvet, fejezetet és vershatárokat.\n"
-                + "- A legördülők első eleme a kiürített, alapértelmezett állapot.\n"
-                + "- A ↺ gomb csak az adott sort állítja vissza alaphelyzetbe.\n"
-                + "- A kezdő és záró vers lehet ugyanaz is.\n"
-                + "- A könyv módosítását a program megerősítteti, ha a sorban már van fejezet- vagy versválasztás.\n"
-                + "- A - gomb eltávolítja az adott szakaszsort.";
+        return """
+                Minden szakaszsorban ugyanahhoz a fordításhoz választhatod könyvet, fejezetet és vershatárokat.
+                - A legördülők első eleme a kiürített, alapértelmezett állapot.
+                - A ↺ gomb csak az adott sort állítja vissza alaphelyzetbe.
+                - A kezdő és záró vers lehet ugyanaz is.
+                - A könyv módosítását a program megerősítteti, ha a sorban már van fejezet- vagy versválasztás.
+                - A - gomb eltávolítja az adott szakaszsort.
+                - A sor szövegei fölé húzva az egeret a teljes felirat buboréksúgóban látható.
+                """;
     }
 
     public void saveCurrentSession() {
@@ -390,6 +433,27 @@ public class MainViewFactory {
         return alert;
     }
 
+    private void bindLabelTooltip(Label label) {
+        Tooltip tooltip = new Tooltip(textOrEmpty(label.getText()));
+        label.setTooltip(tooltip);
+        label.textProperty().addListener((_, _, newText) -> tooltip.setText(textOrEmpty(newText)));
+    }
+
+    private <T> void configureSelectionTooltip(ComboBox<T> comboBox, String emptyTooltipText, String selectedValuePrefix) {
+        Tooltip tooltip = new Tooltip(emptyTooltipText);
+        comboBox.setTooltip(tooltip);
+        if (comboBox.isEditable()) {
+            comboBox.getEditor().setTooltip(tooltip);
+        }
+        comboBox.valueProperty().addListener((_, _, newValue) -> tooltip.setText(
+                newValue == null ? emptyTooltipText : selectedValuePrefix + newValue
+        ));
+    }
+
+    private String textOrEmpty(String text) {
+        return text == null ? "" : text;
+    }
+
     private void configurePlaceholderDisplay(ComboBox<?> comboBox, String placeholderText) {
         comboBox.setPromptText(placeholderText);
         comboBox.setStyle(comboBoxStyle());
@@ -439,6 +503,7 @@ public class MainViewFactory {
         );
         instructionsLabel.setWrapText(true);
         instructionsLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
+        bindLabelTooltip(instructionsLabel);
 
         VBox contentPanel = new VBox(instructionsLabel);
         contentPanel.setPadding(new Insets(12));
@@ -448,16 +513,40 @@ public class MainViewFactory {
         return contentPanel;
     }
 
-    private void registerKeyboardShortcuts(Parent root, Button addRangeButton) {
-        root.addEventFilter(KeyEvent.KEY_PRESSED, new EventHandler<>() {
-            @Override
-            public void handle(KeyEvent event) {
-                if (event.getCode() == KeyCode.ADD && !addRangeButton.isDisable()) {
-                    addRangeButton.fire();
-                    event.consume();
+    private void registerKeyboardShortcuts(
+            Parent root,
+            Button addRangeButton,
+            Button saveButton,
+            Button copyButton,
+            Button resetButton
+    ) {
+        root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.isShortcutDown()) {
+                if (event.getCode() == KeyCode.S) {
+                    fireIfEnabled(saveButton, event);
+                    return;
+                }
+                if (event.getCode() == KeyCode.C) {
+                    fireIfEnabled(copyButton, event);
+                    return;
+                }
+                if (event.getCode() == KeyCode.R) {
+                    fireIfEnabled(resetButton, event);
+                    return;
                 }
             }
+            if (event.getCode() == KeyCode.ADD && !addRangeButton.isDisable()) {
+                addRangeButton.fire();
+                event.consume();
+            }
         });
+    }
+
+    private void fireIfEnabled(Button button, KeyEvent event) {
+        if (!button.isDisable()) {
+            button.fire();
+            event.consume();
+        }
     }
 
     private void restoreSavedSession(
@@ -561,6 +650,11 @@ public class MainViewFactory {
         configureNumericQuickSelection(chapterBox, CHAPTER_PLACEHOLDER);
         configureNumericQuickSelection(fromVerseBox, FROM_VERSE_PLACEHOLDER);
         configureNumericQuickSelection(toVerseBox, TO_VERSE_PLACEHOLDER);
+        bindLabelTooltip(rangeLabel);
+        configureSelectionTooltip(bookBox, "Könyv kiválasztása ehhez a szakaszhoz.", "Kiválasztott könyv: ");
+        configureSelectionTooltip(chapterBox, "Fejezet kiválasztása ehhez a szakaszhoz.", "Kiválasztott fejezet: ");
+        configureSelectionTooltip(fromVerseBox, "Kezdő vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott kezdő vers: ");
+        configureSelectionTooltip(toVerseBox, "Záró vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott záró vers: ");
         rangeLabel.setMinWidth(96);
         rangeLabel.setPrefWidth(96);
         rangeLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
@@ -581,6 +675,7 @@ public class MainViewFactory {
                 removeButton,
                 helpButton
         );
+        bindLabelTooltip(rangeSelection.statusLabel);
         rangeSelection.container.setPadding(new Insets(4, 12, 4, 12));
         rangeSelection.container.setStyle(panelRowStyle());
         HBox.setHgrow(bookBox, Priority.ALWAYS);
@@ -589,16 +684,11 @@ public class MainViewFactory {
         setComboBoxItems(chapterBox, List.of());
         setComboBoxItems(fromVerseBox, List.of());
         setComboBoxItems(toVerseBox, List.of());
-        resetButton.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                resetRangeSelection(
-                        rangeSelection,
-                        activeTranslationBox == null ? null : activeTranslationBox.getValue(),
-                        refreshCopyState
-                );
-            }
-        });
+        resetButton.setOnAction(_ -> resetRangeSelection(
+                rangeSelection,
+                activeTranslationBox == null ? null : activeTranslationBox.getValue(),
+                refreshCopyState
+        ));
 
         bookBox.valueProperty().addListener((_, oldValue, newValue) -> {
             if (rangeSelection.suppressSelectionChangeHandling || Objects.equals(oldValue, newValue)) {
@@ -1002,7 +1092,7 @@ public class MainViewFactory {
 
     private boolean isNumericEditorChangeAllowed(ComboBox<Integer> comboBox, TextFormatter.Change change) {
         String newText = change.getControlNewText();
-        if (newText == null || newText.isEmpty()) {
+        if (newText.isEmpty()) {
             return true;
         }
         if (!newText.chars().allMatch(Character::isDigit)) {
