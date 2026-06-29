@@ -11,6 +11,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,13 +22,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScraperApplicationTest {
 
-  private static final Path DEFAULT_DATABASE_PATH = Path.of(System.getProperty("user.home"), "bible-verses.db");
+  private static final Path DEFAULT_DATABASE_PATH = ScraperApplication.resolveDefaultDatabasePath(Path.of(System.getProperty("user.dir")));
   private static final String OUTPUT_DATABASE_PATH_PROPERTY = "scraper.outputDatabasePath";
   private static final String REQUEST_DELAY_PROPERTY = "scraper.requestDelayMillis";
   private static final String STATIC_ENABLED_PROPERTY = "scraper.staticScrapingEnabled";
   private static final String DYNAMIC_ENABLED_PROPERTY = "scraper.dynamicScrapingEnabled";
   private static final String STATIC_TRANSLATIONS_PROPERTY = "scraper.staticTranslations";
   private static final String DYNAMIC_TRANSLATIONS_PROPERTY = "scraper.dynamicTranslations";
+  private static final String DYNAMIC_START_URL_PROPERTY = "scraper.dynamicStartUrl";
+
+    @Test
+    void resolveDefaultDatabasePathUsesRepositoryLocalAppDataDirectory() throws IOException {
+        Path repositoryRoot = Files.createTempDirectory("scraper-repo-root");
+        Files.createFile(repositoryRoot.resolve("pom.xml"));
+        Files.createDirectories(repositoryRoot.resolve("app"));
+        Files.createDirectories(repositoryRoot.resolve("scraper").resolve("nested"));
+
+        Path resolvedPath = ScraperApplication.resolveDefaultDatabasePath(repositoryRoot.resolve("scraper").resolve("nested"));
+
+        assertEquals(repositoryRoot.resolve("app").resolve("data").resolve("bible-verses.db"), resolvedPath);
+    }
+
+    @Test
+    void resolveDefaultDatabasePathFallsBackToUserHomeOutsideRepository() throws IOException {
+        Path unrelatedDirectory = Files.createTempDirectory("scraper-non-repo");
+
+        Path resolvedPath = ScraperApplication.resolveDefaultDatabasePath(unrelatedDirectory);
+
+        assertEquals(Path.of(System.getProperty("user.home"), "bible-verses.db"), resolvedPath);
+    }
+
+    @Test
+    void findRepositoryRootReturnsEmptyWhenRepositoryMarkersAreMissing() throws IOException {
+        Path unrelatedDirectory = Files.createTempDirectory("scraper-no-markers");
+
+        assertTrue(ScraperApplication.findRepositoryRoot(unrelatedDirectory).isEmpty());
+    }
 
     @Test
     void createDefaultConfigUsesExpectedValues() {
@@ -38,6 +68,7 @@ class ScraperApplicationTest {
         "true",
         "all",
         "all",
+        null,
         () -> {
           ScraperConfig config = ScraperApplication.createDefaultConfig();
 
@@ -47,6 +78,7 @@ class ScraperApplicationTest {
           assertTrue(config.dynamicScrapingEnabled());
           assertEquals(List.of("all"), config.staticTranslations());
           assertEquals(List.of("all"), config.dynamicTranslations());
+          assertEquals(Optional.empty(), config.dynamicStartUrl());
         }
     );
     }
@@ -60,6 +92,7 @@ class ScraperApplicationTest {
         "false",
         "revidealt-karoli, karoli-gaspar, revidealt-uj-forditas",
         "efo",
+        null,
         () -> {
           ScraperConfig config = ScraperApplication.createDefaultConfig();
 
@@ -78,6 +111,7 @@ class ScraperApplicationTest {
         "false",
         " revidealt-karoli, , karoli-gaspar ,, revidealt-uj-forditas ",
         " efo, , niv ,, kjv ",
+        null,
         () -> {
           ScraperConfig config = ScraperApplication.createDefaultConfig();
 
@@ -88,9 +122,27 @@ class ScraperApplicationTest {
     }
 
     @Test
+    void createDefaultConfigUsesConfiguredDynamicStartUrl() {
+    withScraperProperties(
+        DEFAULT_DATABASE_PATH.toString(),
+        "250",
+        "true",
+        "true",
+        "all",
+        "efo",
+        " https://www.bible.com/bible/198/DAN.12.EFO ",
+        () -> {
+          ScraperConfig config = ScraperApplication.createDefaultConfig();
+
+          assertEquals(Optional.of("https://www.bible.com/bible/198/DAN.12.EFO"), config.dynamicStartUrl());
+        }
+    );
+    }
+
+    @Test
     void createCoordinatorBuildsCoordinator() throws Exception {
         ScraperCoordinator coordinator = ScraperApplication.createCoordinator(
-                new ScraperConfig(Path.of("target", "custom.db"), 0, false, false, List.of("all"), List.of("all"))
+                new ScraperConfig(Path.of("target", "custom.db"), 0, false, false, List.of("all"), List.of("all"), Optional.empty())
         );
 
         Field staticSiteScrapersField = ScraperCoordinator.class.getDeclaredField("staticSiteScrapers");
@@ -121,11 +173,40 @@ class ScraperApplicationTest {
         "false",
         "all",
         "all",
+        null,
         () -> {
           ScraperApplication.main(new String[0]);
           assertTrue(Files.exists(databasePath));
         }
     );
+    }
+
+    @Test
+    void createDefaultConfigUsesResolvedDefaultPathWhenOutputPropertyIsMissing() {
+        String previousOutputDatabasePath = System.getProperty(OUTPUT_DATABASE_PATH_PROPERTY);
+
+        try {
+            System.clearProperty(OUTPUT_DATABASE_PATH_PROPERTY);
+            System.setProperty(REQUEST_DELAY_PROPERTY, "250");
+            System.setProperty(STATIC_ENABLED_PROPERTY, "true");
+            System.setProperty(DYNAMIC_ENABLED_PROPERTY, "true");
+            System.setProperty(STATIC_TRANSLATIONS_PROPERTY, "all");
+            System.setProperty(DYNAMIC_TRANSLATIONS_PROPERTY, "all");
+            System.clearProperty(DYNAMIC_START_URL_PROPERTY);
+
+            ScraperConfig config = ScraperApplication.createDefaultConfig();
+
+            assertEquals(DEFAULT_DATABASE_PATH, config.outputDatabasePath());
+            assertEquals(Optional.empty(), config.dynamicStartUrl());
+        } finally {
+            restoreProperty(OUTPUT_DATABASE_PATH_PROPERTY, previousOutputDatabasePath);
+            System.clearProperty(REQUEST_DELAY_PROPERTY);
+            System.clearProperty(STATIC_ENABLED_PROPERTY);
+            System.clearProperty(DYNAMIC_ENABLED_PROPERTY);
+            System.clearProperty(STATIC_TRANSLATIONS_PROPERTY);
+            System.clearProperty(DYNAMIC_TRANSLATIONS_PROPERTY);
+            System.clearProperty(DYNAMIC_START_URL_PROPERTY);
+        }
     }
 
     @Test
@@ -145,6 +226,7 @@ class ScraperApplicationTest {
       String dynamicScrapingEnabled,
       String staticTranslations,
       String dynamicTranslations,
+      String dynamicStartUrl,
       ThrowingRunnable action
   ) {
     String previousOutputDatabasePath = System.getProperty(OUTPUT_DATABASE_PATH_PROPERTY);
@@ -153,6 +235,7 @@ class ScraperApplicationTest {
     String previousDynamicEnabled = System.getProperty(DYNAMIC_ENABLED_PROPERTY);
     String previousStaticTranslations = System.getProperty(STATIC_TRANSLATIONS_PROPERTY);
     String previousDynamicTranslations = System.getProperty(DYNAMIC_TRANSLATIONS_PROPERTY);
+    String previousDynamicStartUrl = System.getProperty(DYNAMIC_START_URL_PROPERTY);
 
     try {
       System.setProperty(OUTPUT_DATABASE_PATH_PROPERTY, outputDatabasePath);
@@ -161,6 +244,7 @@ class ScraperApplicationTest {
       System.setProperty(DYNAMIC_ENABLED_PROPERTY, dynamicScrapingEnabled);
       System.setProperty(STATIC_TRANSLATIONS_PROPERTY, staticTranslations);
       System.setProperty(DYNAMIC_TRANSLATIONS_PROPERTY, dynamicTranslations);
+      restoreProperty(DYNAMIC_START_URL_PROPERTY, dynamicStartUrl);
       action.run();
     } catch (Exception ex) {
       throw new IllegalStateException("Test setup failed.", ex);
@@ -171,6 +255,7 @@ class ScraperApplicationTest {
       restoreProperty(DYNAMIC_ENABLED_PROPERTY, previousDynamicEnabled);
       restoreProperty(STATIC_TRANSLATIONS_PROPERTY, previousStaticTranslations);
       restoreProperty(DYNAMIC_TRANSLATIONS_PROPERTY, previousDynamicTranslations);
+      restoreProperty(DYNAMIC_START_URL_PROPERTY, previousDynamicStartUrl);
     }
   }
 

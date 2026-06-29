@@ -27,6 +27,7 @@
 		<selenium.version>4.44.0</selenium.version>
 		<sqlite.version>3.53.1.0</sqlite.version>
 		<jacoco.version>0.8.14</jacoco.version>
+		<native.access.jvm.arg>--enable-native-access=ALL-UNNAMED</native.access.jvm.arg>
 	</properties>
 
 	<dependencyManagement>
@@ -57,13 +58,16 @@
 					<artifactId>maven-surefire-plugin</artifactId>
 					<version>3.5.5</version>
 					<configuration>
-						<argLine>@{argLine} --enable-native-access=ALL-UNNAMED -XX:+EnableDynamicAgentLoading</argLine>
+						<argLine>@{argLine} ${native.access.jvm.arg} -XX:+EnableDynamicAgentLoading</argLine>
 					</configuration>
 				</plugin>
 				<plugin>
 					<groupId>org.springframework.boot</groupId>
 					<artifactId>spring-boot-maven-plugin</artifactId>
 					<version>${spring.boot.version}</version>
+					<configuration>
+						<jvmArguments>${native.access.jvm.arg}</jvmArguments>
+					</configuration>
 				</plugin>
 				<plugin>
 					<groupId>org.codehaus.mojo</groupId>

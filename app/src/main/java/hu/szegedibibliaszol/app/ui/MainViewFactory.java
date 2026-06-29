@@ -640,7 +640,9 @@ public class MainViewFactory {
         Label rangeLabel = new Label("Szakasz");
         ComboBox<String> bookBox = new ComboBox<>();
         ComboBox<Integer> chapterBox = new ComboBox<>();
+        Label chapterSeparatorLabel = new Label(":");
         ComboBox<Integer> fromVerseBox = new ComboBox<>();
+        Label verseRangeSeparatorLabel = new Label("-");
         ComboBox<Integer> toVerseBox = new ComboBox<>();
         Button resetButton = new Button(RANGE_RESET_BUTTON_TEXT);
         Button removeButton = new Button("-");
@@ -651,6 +653,8 @@ public class MainViewFactory {
         configureNumericQuickSelection(fromVerseBox, FROM_VERSE_PLACEHOLDER);
         configureNumericQuickSelection(toVerseBox, TO_VERSE_PLACEHOLDER);
         bindLabelTooltip(rangeLabel);
+        chapterSeparatorLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        verseRangeSeparatorLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
         configureSelectionTooltip(bookBox, "Könyv kiválasztása ehhez a szakaszhoz.", "Kiválasztott könyv: ");
         configureSelectionTooltip(chapterBox, "Fejezet kiválasztása ehhez a szakaszhoz.", "Kiválasztott fejezet: ");
         configureSelectionTooltip(fromVerseBox, "Kezdő vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott kezdő vers: ");
@@ -666,7 +670,7 @@ public class MainViewFactory {
         helpButton.setOnAction(_ -> createRangeHelpAlert().showAndWait());
 
         RangeSelectionControls rangeSelection = new RangeSelectionControls(
-                new HBox(12, rangeLabel, bookBox, chapterBox, fromVerseBox, toVerseBox, resetButton, removeButton),
+                new HBox(12, rangeLabel, bookBox, chapterBox, chapterSeparatorLabel, fromVerseBox, verseRangeSeparatorLabel, toVerseBox, resetButton, removeButton),
                 rangeLabel,
                 bookBox,
                 chapterBox,
@@ -676,6 +680,7 @@ public class MainViewFactory {
                 helpButton
         );
         bindLabelTooltip(rangeSelection.statusLabel);
+        rangeSelection.container.setAlignment(Pos.CENTER_LEFT);
         rangeSelection.container.setPadding(new Insets(4, 12, 4, 12));
         rangeSelection.container.setStyle(panelRowStyle());
         HBox.setHgrow(bookBox, Priority.ALWAYS);

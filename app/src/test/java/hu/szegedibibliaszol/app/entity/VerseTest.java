@@ -8,6 +8,18 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class VerseTest {
 
     @Test
+    void defaultConstructorCreatesEmptyEntity() {
+        Verse verse = new Verse();
+
+        assertNull(verse.getId());
+        assertNull(verse.getTranslation());
+        assertNull(verse.getBook());
+        assertEquals(0, verse.getChapter());
+        assertEquals(0, verse.getVerse());
+        assertNull(verse.getText());
+    }
+
+    @Test
     void verseExposesConfiguredFields() {
         Verse verse = new Verse("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben teremtette Isten az eget és a földet.");
 

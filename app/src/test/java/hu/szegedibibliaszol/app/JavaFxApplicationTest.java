@@ -6,6 +6,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -42,6 +44,34 @@ class JavaFxApplicationTest {
         javaFxApplication.init();
 
         assertEquals(1, javaFxApplication.createContextCalls);
+    }
+
+    @Test
+    void resolveDefaultDatabasePathUsesRepositoryLocalAppDataDirectory() throws IOException {
+        Path repositoryRoot = Files.createTempDirectory("app-repo-root");
+        Files.createFile(repositoryRoot.resolve("pom.xml"));
+        Files.createDirectories(repositoryRoot.resolve("app"));
+        Files.createDirectories(repositoryRoot.resolve("scraper").resolve("nested"));
+
+        Path resolvedPath = JavaFxApplication.resolveDefaultDatabasePath(repositoryRoot.resolve("scraper").resolve("nested"));
+
+        assertEquals(repositoryRoot.resolve("app").resolve("data").resolve("bible-verses.db"), resolvedPath);
+    }
+
+    @Test
+    void resolveDefaultDatabasePathFallsBackToUserHomeOutsideRepository() throws IOException {
+        Path unrelatedDirectory = Files.createTempDirectory("app-non-repo");
+
+        Path resolvedPath = JavaFxApplication.resolveDefaultDatabasePath(unrelatedDirectory);
+
+        assertEquals(Path.of(System.getProperty("user.home"), "bible-verses.db"), resolvedPath);
+    }
+
+    @Test
+    void findRepositoryRootReturnsEmptyWhenRepositoryMarkersAreMissing() throws IOException {
+        Path unrelatedDirectory = Files.createTempDirectory("app-no-markers");
+
+        assertTrue(JavaFxApplication.findRepositoryRoot(unrelatedDirectory).isEmpty());
     }
 
     @Test

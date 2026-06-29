@@ -4,6 +4,7 @@ import hu.szegedibibliaszol.scraper.model.VerseRecord;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -20,29 +21,66 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractDynamicSiteScraper {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractDynamicSiteScraper.class);
+    private static final Duration DYNAMIC_PAGE_LOAD_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration DYNAMIC_RENDER_TIMEOUT = Duration.ofSeconds(45);
+    private static final int DEFAULT_DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS = 25;
+    private static final String DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS_PROPERTY =
+            "scraper.dynamicBrowserRestartEveryChapters";
+
+    private DynamicPageLoader dynamicPageLoader;
 
     public abstract String id();
 
     public abstract String translation();
 
     public List<VerseRecord> scrape() {
+        return scrapeFrom(startUrl());
+    }
+
+    public List<VerseRecord> scrapeFrom(String startUrl) {
         List<VerseRecord> verses = new ArrayList<>();
         Set<String> visitedChapterUrls = new LinkedHashSet<>();
-        String currentChapterUrl = startUrl();
+        String currentChapterUrl = startUrl;
+        int processedChapterCount = 0;
 
         log.info("Starting dynamic scrape of translation '{}' from {}", translation(), currentChapterUrl);
-        while (currentChapterUrl != null) {
-            if (!visitedChapterUrls.add(currentChapterUrl)) {
-                throw new IllegalStateException(
-                        "Detected navigation loop while scraping " + translation() + " at " + currentChapterUrl
-                );
-            }
+        try {
+            while (currentChapterUrl != null) {
+                if (!visitedChapterUrls.add(currentChapterUrl)) {
+                    throw new IllegalStateException(
+                            "Detected navigation loop while scraping " + translation() + " at " + currentChapterUrl
+                    );
+                }
 
-            Document chapterPage = loadDocument(currentChapterUrl);
-            ensureTranslationSelected(chapterPage, currentChapterUrl);
-            ChapterPage parsedChapter = parseChapterPage(chapterPage, currentChapterUrl);
-            verses.addAll(parsedChapter.verses());
-            currentChapterUrl = parsedChapter.nextChapterUrl();
+                Document chapterPage = loadDocument(currentChapterUrl);
+                ensureTranslationSelected(chapterPage, currentChapterUrl);
+                ChapterPage parsedChapter = parseChapterPage(chapterPage, currentChapterUrl);
+                verses.addAll(parsedChapter.verses());
+                processedChapterCount++;
+                if (visitedChapterUrls.size() == 1 || visitedChapterUrls.size() % 25 == 0) {
+                    log.info(
+                            "Dynamic scrape of '{}' has reached {} chapter(s); current page: {}",
+                            translation(),
+                            visitedChapterUrls.size(),
+                            currentChapterUrl
+                    );
+                }
+                String nextChapterUrl = parsedChapter.nextChapterUrl();
+                if (shouldRestartDynamicPageLoaderAfterChapter(processedChapterCount, nextChapterUrl)) {
+                    log.info(
+                            "Restarting dynamic browser for '{}' after {} chapter(s); next page: {}",
+                            translation(),
+                            processedChapterCount,
+                            nextChapterUrl
+                    );
+                    closeDynamicPageLoader();
+                }
+                currentChapterUrl = nextChapterUrl;
+            }
+        } catch (RuntimeException ex) {
+            throw new PartialScrapeException(ex.getMessage(), ex, verses);
+        } finally {
+            closeDynamicPageLoader();
         }
 
         log.info(
@@ -67,6 +105,14 @@ public abstract class AbstractDynamicSiteScraper {
     }
 
     protected Document readDocument(String url) throws IOException {
+        if (shouldUseDirectHttp(url)) {
+            return readStaticDocument(url);
+        }
+
+        return readRenderedDocument(url);
+    }
+
+    protected Document readStaticDocument(String url) throws IOException {
         Connection.Response response = Jsoup.connect(url)
                 .userAgent("Mozilla/5.0")
                 .timeout(30_000)
@@ -75,6 +121,54 @@ public abstract class AbstractDynamicSiteScraper {
         try (InputStream inputStream = response.bodyStream()) {
             return Jsoup.parse(inputStream, StandardCharsets.UTF_8.name(), url);
         }
+    }
+
+    protected Document readRenderedDocument(String url) throws IOException {
+        return dynamicPageLoader().load(url);
+    }
+
+    protected boolean shouldUseDirectHttp(String url) {
+        return url.startsWith("http://127.0.0.1")
+                || url.startsWith("https://127.0.0.1")
+                || url.startsWith("http://localhost")
+                || url.startsWith("https://localhost");
+    }
+
+    protected DynamicPageLoader createDynamicPageLoader() {
+        return new SeleniumRenderedPageLoader(
+                SeleniumRenderedPageLoader.defaultBrowserCandidates(),
+                DYNAMIC_PAGE_LOAD_TIMEOUT,
+                DYNAMIC_RENDER_TIMEOUT
+        );
+    }
+
+    protected int dynamicBrowserRestartEveryChapters() {
+        String configuredValue = System.getProperty(
+                DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS_PROPERTY,
+                Integer.toString(DEFAULT_DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS)
+        );
+
+        try {
+            int parsedValue = Integer.parseInt(configuredValue.trim());
+            if (parsedValue < 0) {
+                throw new IllegalStateException(
+                        DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS_PROPERTY + " must be 0 or greater, but was " + configuredValue
+                );
+            }
+            return parsedValue;
+        } catch (NumberFormatException ex) {
+            throw new IllegalStateException(
+                    DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS_PROPERTY + " must be a whole number, but was " + configuredValue,
+                    ex
+            );
+        }
+    }
+
+    protected boolean shouldRestartDynamicPageLoaderAfterChapter(int processedChapterCount, String nextChapterUrl) {
+        int restartEveryChapters = dynamicBrowserRestartEveryChapters();
+        return restartEveryChapters > 0
+                && nextChapterUrl != null
+                && processedChapterCount % restartEveryChapters == 0;
     }
 
     protected ChapterPage parseChapterPage(Document chapterPage, String currentChapterUrl) {
@@ -215,6 +309,22 @@ public abstract class AbstractDynamicSiteScraper {
     }
 
     protected record UsfmReference(String bookCode, int chapter, int verse) {
+    }
+
+    private DynamicPageLoader dynamicPageLoader() {
+        if (dynamicPageLoader == null) {
+            dynamicPageLoader = createDynamicPageLoader();
+        }
+        return dynamicPageLoader;
+    }
+
+    private void closeDynamicPageLoader() {
+        if (dynamicPageLoader == null) {
+            return;
+        }
+
+        dynamicPageLoader.close();
+        dynamicPageLoader = null;
     }
 }
 

@@ -3,6 +3,7 @@ package hu.szegedibibliaszol.scraper.model;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,7 +21,8 @@ class ScraperConfigTest {
                 true,
                 false,
                 List.of("revidealt-karoli"),
-                List.of("efo")
+                List.of("efo"),
+                Optional.of("https://www.bible.com/bible/198/DAN.12.EFO")
         );
 
         assertEquals(Path.of("verses.db"), config.outputDatabasePath());
@@ -29,6 +31,7 @@ class ScraperConfigTest {
         assertFalse(config.dynamicScrapingEnabled());
         assertEquals(List.of("revidealt-karoli"), config.staticTranslations());
         assertEquals(List.of("efo"), config.dynamicTranslations());
+        assertEquals(Optional.of("https://www.bible.com/bible/198/DAN.12.EFO"), config.dynamicStartUrl());
     }
 
     @Test
@@ -42,15 +45,42 @@ class ScraperConfigTest {
                 true,
                 false,
                 configuredStaticTranslations,
-                configuredDynamicTranslations
+                configuredDynamicTranslations,
+                Optional.empty()
         );
         configuredStaticTranslations.add("karoli-gaspar");
         configuredDynamicTranslations.add("niv");
 
         assertEquals(List.of("all"), config.staticTranslations());
         assertEquals(List.of("efo"), config.dynamicTranslations());
+        assertTrue(config.dynamicStartUrl().isEmpty());
         assertThrows(UnsupportedOperationException.class, () -> config.staticTranslations().add("karoli-gaspar"));
         assertThrows(UnsupportedOperationException.class, () -> config.dynamicTranslations().add("niv"));
+    }
+
+    @Test
+    void recordTrimsAndDropsBlankDynamicStartUrl() {
+        ScraperConfig configuredUrl = new ScraperConfig(
+                Path.of("verses.db"),
+                500,
+                true,
+                true,
+                List.of("all"),
+                List.of("efo"),
+                Optional.of("  https://www.bible.com/bible/198/DAN.12.EFO  ")
+        );
+        ScraperConfig blankUrl = new ScraperConfig(
+                Path.of("verses.db"),
+                500,
+                true,
+                true,
+                List.of("all"),
+                List.of("efo"),
+                Optional.of("   ")
+        );
+
+        assertEquals(Optional.of("https://www.bible.com/bible/198/DAN.12.EFO"), configuredUrl.dynamicStartUrl());
+        assertTrue(blankUrl.dynamicStartUrl().isEmpty());
     }
 }
 

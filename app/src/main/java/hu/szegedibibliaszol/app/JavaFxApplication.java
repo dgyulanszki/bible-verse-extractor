@@ -4,6 +4,10 @@ import hu.szegedibibliaszol.app.ui.MainViewFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -19,6 +23,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 public class JavaFxApplication extends Application {
 
+    private static final String DATABASE_FILE_NAME = "bible-verses.db";
+    private static final Path USER_HOME_FALLBACK_DATABASE_PATH = Path.of(System.getProperty("user.home"), DATABASE_FILE_NAME);
     private static final double DEFAULT_WIDTH = 1180;
     private static final double DEFAULT_HEIGHT = 760;
     private static final double MINIMUM_WIDTH = 960;
@@ -50,9 +56,29 @@ public class JavaFxApplication extends Application {
     }
 
     ConfigurableApplicationContext createApplicationContext() {
+        Path defaultDatabasePath = resolveDefaultDatabasePath(Path.of(System.getProperty("user.dir")));
         return new SpringApplicationBuilder(BibleVerseAppApplication.class)
                 .headless(false)
+                .properties(Map.of("app.database.path", defaultDatabasePath.toString()))
                 .run();
+    }
+
+    static Path resolveDefaultDatabasePath(Path searchStart) {
+        return findRepositoryRoot(searchStart)
+                .map(repositoryRoot -> repositoryRoot.resolve("app").resolve("data").resolve(DATABASE_FILE_NAME))
+                .orElse(USER_HOME_FALLBACK_DATABASE_PATH);
+    }
+
+    static Optional<Path> findRepositoryRoot(Path searchStart) {
+        for (Path current = searchStart.toAbsolutePath(); current != null; current = current.getParent()) {
+            if (Files.isRegularFile(current.resolve("pom.xml"))
+                    && Files.isDirectory(current.resolve("app"))
+                    && Files.isDirectory(current.resolve("scraper"))) {
+                return Optional.of(current);
+            }
+        }
+
+        return Optional.empty();
     }
 
     Scene createScene(MainViewFactory mainViewFactory) {

@@ -39,24 +39,66 @@ public class ScraperCoordinator {
     public void run() {
         List<VerseRecord> collectedVerses = new ArrayList<>();
 
-        if (config.staticScrapingEnabled()) {
-            for (AbstractStaticSiteScraper staticSiteScraper : selectedStaticSiteScrapers()) {
-                rateLimiter.acquire();
-                collectedVerses.addAll(staticSiteScraper.scrape());
+        try {
+            if (config.staticScrapingEnabled()) {
+                for (AbstractStaticSiteScraper staticSiteScraper : selectedStaticSiteScrapers()) {
+                    rateLimiter.acquire();
+                    collectedVerses.addAll(staticSiteScraper.scrape());
+                }
             }
+
+            if (config.dynamicScrapingEnabled()) {
+                List<AbstractDynamicSiteScraper> selectedDynamicSiteScrapers = selectedDynamicSiteScrapers();
+                validateDynamicStartUrlUsage(selectedDynamicSiteScrapers);
+                for (AbstractDynamicSiteScraper dynamicSiteScraper : selectedDynamicSiteScrapers) {
+                    rateLimiter.acquire();
+                    config.dynamicStartUrl().ifPresent(startUrl -> log.info(
+                            "Resuming dynamic scraper '{}' from {}",
+                            dynamicSiteScraper.id(),
+                            startUrl
+                    ));
+                    List<VerseRecord> dynamicVerses = config.dynamicStartUrl()
+                            .map(dynamicSiteScraper::scrapeFrom)
+                            .orElseGet(dynamicSiteScraper::scrape);
+                    collectedVerses.addAll(dynamicVerses);
+                    log.info("Dynamic scraper '{}' collected {} verses.", dynamicSiteScraper.id(), dynamicVerses.size());
+                }
+            }
+
+            verseExportService.exportToSqlite(config.outputDatabasePath(), List.copyOf(collectedVerses));
+            log.info("Exported {} verses to {}", collectedVerses.size(), config.outputDatabasePath());
+        } catch (RuntimeException ex) {
+            persistCollectedVersesOnFailure(collectedVerses, ex);
+            throw ex;
+        }
+    }
+
+    private void persistCollectedVersesOnFailure(List<VerseRecord> collectedVerses, RuntimeException failure) {
+        List<VerseRecord> versesToPersist = new ArrayList<>(collectedVerses);
+        if (failure instanceof PartialScrapeException partialScrapeException) {
+            versesToPersist.addAll(partialScrapeException.partialVerses());
         }
 
-        if (config.dynamicScrapingEnabled()) {
-            for (AbstractDynamicSiteScraper dynamicSiteScraper : selectedDynamicSiteScrapers()) {
-                rateLimiter.acquire();
-                List<VerseRecord> dynamicVerses = dynamicSiteScraper.scrape();
-                collectedVerses.addAll(dynamicVerses);
-                log.info("Dynamic scraper '{}' collected {} verses.", dynamicSiteScraper.id(), dynamicVerses.size());
-            }
+        if (versesToPersist.isEmpty()) {
+            log.warn("Scraper run failed before any verses were collected, so no fallback export was written.");
+            return;
         }
 
-        verseExportService.exportToSqlite(config.outputDatabasePath(), List.copyOf(collectedVerses));
-        log.info("Exported {} verses to {}", collectedVerses.size(), config.outputDatabasePath());
+        try {
+            verseExportService.exportToSqlite(config.outputDatabasePath(), List.copyOf(versesToPersist));
+            log.warn(
+                    "Scraper run failed, but persisted {} collected verse(s) to {} as a fallback.",
+                    versesToPersist.size(),
+                    config.outputDatabasePath()
+            );
+        } catch (RuntimeException exportFailure) {
+            failure.addSuppressed(exportFailure);
+            log.error(
+                    "Scraper run failed and fallback export to {} also failed.",
+                    config.outputDatabasePath(),
+                    exportFailure
+            );
+        }
     }
 
     private List<AbstractStaticSiteScraper> selectedStaticSiteScrapers() {
@@ -115,6 +157,15 @@ public class ScraperCoordinator {
         }
 
         return List.copyOf(selectedScrapers);
+    }
+
+    private void validateDynamicStartUrlUsage(List<AbstractDynamicSiteScraper> selectedDynamicSiteScrapers) {
+        if (config.dynamicStartUrl().isPresent() && selectedDynamicSiteScrapers.size() > 1) {
+            throw new IllegalStateException(
+                    "scraper.dynamicStartUrl can only be used when exactly one dynamic scraper is selected. Selected ids: "
+                            + selectedDynamicSiteScrapers.stream().map(AbstractDynamicSiteScraper::id).toList()
+            );
+        }
     }
 }
 

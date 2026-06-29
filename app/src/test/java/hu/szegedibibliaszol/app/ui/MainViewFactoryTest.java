@@ -88,14 +88,16 @@ class MainViewFactoryTest {
 
             HBox firstRangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
             Label firstRangeLabel = (Label) firstRangeRow.getChildren().get(0);
-            ComboBox<String> firstBookBox = comboBox(firstRangeRow, 1);
-            ComboBox<Integer> firstChapterBox = comboBox(firstRangeRow, 2);
-            ComboBox<Integer> firstFromVerseBox = comboBox(firstRangeRow, 3);
-            ComboBox<Integer> firstToVerseBox = comboBox(firstRangeRow, 4);
-            Button firstResetButton = (Button) firstRangeRow.getChildren().get(5);
-            Button firstRemoveButton = (Button) firstRangeRow.getChildren().get(6);
-            Label firstRangeStatus = (Label) firstRangeRow.getChildren().get(7);
-            Button firstRangeHelpButton = (Button) firstRangeRow.getChildren().get(8);
+            ComboBox<String> firstBookBox = comboBox(firstRangeRow, 0);
+            ComboBox<Integer> firstChapterBox = comboBox(firstRangeRow, 1);
+            Label firstChapterSeparatorLabel = (Label) firstRangeRow.getChildren().get(3);
+            ComboBox<Integer> firstFromVerseBox = comboBox(firstRangeRow, 2);
+            Label firstVerseRangeSeparatorLabel = (Label) firstRangeRow.getChildren().get(5);
+            ComboBox<Integer> firstToVerseBox = comboBox(firstRangeRow, 3);
+            Button firstResetButton = (Button) firstRangeRow.getChildren().get(7);
+            Button firstRemoveButton = (Button) firstRangeRow.getChildren().get(8);
+            Label firstRangeStatus = (Label) firstRangeRow.getChildren().get(9);
+            Button firstRangeHelpButton = (Button) firstRangeRow.getChildren().get(10);
 
             assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getText());
             assertEquals("Fordítás", translationBox.getPromptText());
@@ -103,6 +105,8 @@ class MainViewFactoryTest {
             assertEquals("Fejezet", firstChapterBox.getPromptText());
             assertEquals("Kezdő vers", firstFromVerseBox.getPromptText());
             assertEquals("Záró vers", firstToVerseBox.getPromptText());
+            assertEquals(":", firstChapterSeparatorLabel.getText());
+            assertEquals("-", firstVerseRangeSeparatorLabel.getText());
             assertEquals("Szakasz 1", firstRangeLabel.getText());
             assertEquals("Útmutató", tutorialButton.getText());
             assertEquals("?", generalHelpButton.getText());
@@ -187,19 +191,19 @@ class MainViewFactoryTest {
 
             HBox secondRangeRow = (HBox) rangeSelectionsBox.getChildren().get(1);
             Label secondRangeLabel = (Label) secondRangeRow.getChildren().get(0);
-            ComboBox<String> secondBookBox = comboBox(secondRangeRow, 1);
-            ComboBox<Integer> secondChapterBox = comboBox(secondRangeRow, 2);
-            ComboBox<Integer> secondFromVerseBox = comboBox(secondRangeRow, 3);
-            ComboBox<Integer> secondToVerseBox = comboBox(secondRangeRow, 4);
-            Button secondResetButton = (Button) secondRangeRow.getChildren().get(5);
-            Label secondRangeStatus = (Label) secondRangeRow.getChildren().get(7);
+            ComboBox<String> secondBookBox = comboBox(secondRangeRow, 0);
+            ComboBox<Integer> secondChapterBox = comboBox(secondRangeRow, 1);
+            ComboBox<Integer> secondFromVerseBox = comboBox(secondRangeRow, 2);
+            ComboBox<Integer> secondToVerseBox = comboBox(secondRangeRow, 3);
+            Button secondResetButton = (Button) secondRangeRow.getChildren().get(7);
+            Label secondRangeStatus = (Label) secondRangeRow.getChildren().get(9);
 
             assertEquals("Szakasz 2", secondRangeLabel.getText());
             assertEquals(3, secondBookBox.getItems().size());
             assertNull(secondBookBox.getItems().get(0));
             assertEquals("1. Mózes", secondBookBox.getItems().get(1));
             assertEquals("Zsoltárok", secondBookBox.getItems().get(2));
-            assertFalse(((Button) secondRangeRow.getChildren().get(8)).isVisible());
+            assertFalse(((Button) secondRangeRow.getChildren().get(10)).isVisible());
 
             secondBookBox.setValue("Zsoltárok");
             assertEquals("A(z) 2. szakaszban a könyv kiválasztva. Válassz fejezetet.", secondRangeStatus.getText());
@@ -267,7 +271,7 @@ class MainViewFactoryTest {
                     Clipboard.getSystemClipboard().getString()
             );
 
-            Button secondRemoveButton = (Button) secondRangeRow.getChildren().get(6);
+            Button secondRemoveButton = (Button) secondRangeRow.getChildren().get(8);
             secondRemoveButton.fire();
             assertEquals(1, rangeSelectionsBox.getChildren().size());
             assertFalse(copyButton.isDisable());
@@ -325,11 +329,11 @@ class MainViewFactoryTest {
             Button generalHelpButton = (Button) generalHelpRow.getChildren().get(1);
 
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            ComboBox<String> bookBox = comboBox(rangeRow, 1);
-            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
-            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
-            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
-            Button rangeHelpButton = (Button) rangeRow.getChildren().get(8);
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
+            Button rangeHelpButton = (Button) rangeRow.getChildren().get(10);
 
             assertEquals("Revideált Károli", translationBox.getValue());
             assertEquals("1. Mózes", bookBox.getValue());
@@ -395,11 +399,11 @@ class MainViewFactoryTest {
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            ComboBox<String> bookBox = comboBox(rangeRow, 1);
-            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
-            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
-            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
-            Label rangeStatus = (Label) rangeRow.getChildren().get(7);
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
+            Label rangeStatus = (Label) rangeRow.getChildren().get(9);
 
             translationBox.setValue("Revideált Károli");
             bookBox.setValue("Üres könyv");
@@ -605,10 +609,10 @@ class MainViewFactoryTest {
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            ComboBox<String> bookBox = comboBox(rangeRow, 1);
-            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
-            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
-            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
 
             translationBox.setValue("Revideált Károli");
             bookBox.setValue("1. Mózes");
@@ -644,10 +648,10 @@ class MainViewFactoryTest {
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            ComboBox<String> bookBox = comboBox(rangeRow, 1);
-            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
-            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
-            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
 
             assertEquals("Revideált Károli", translationBox.getValue());
             assertNull(bookBox.getValue());
@@ -696,10 +700,10 @@ class MainViewFactoryTest {
 
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            ComboBox<String> bookBox = comboBox(rangeRow, 1);
-            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
-            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
-            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
 
             assertFalse(translationBox.isEditable());
             assertFalse(bookBox.isEditable());
@@ -887,7 +891,7 @@ class MainViewFactoryTest {
             ComboBox<String> bookBox = comboBox(rangeRow, 1);
             ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
             ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
-            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 4);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
 
             translationBox.setValue("Revideált Károli");
             bookBox.setValue("1. Mózes");
@@ -927,7 +931,11 @@ class MainViewFactoryTest {
 
     @SuppressWarnings("unchecked")
     private <T> ComboBox<T> comboBox(HBox row, int index) {
-        return (ComboBox<T>) row.getChildren().get(index);
+        return (ComboBox<T>) row.getChildren().stream()
+                .filter(ComboBox.class::isInstance)
+                .skip(index)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing ComboBox at logical index " + index));
     }
 
     private VBox mainContent(BorderPane root) {

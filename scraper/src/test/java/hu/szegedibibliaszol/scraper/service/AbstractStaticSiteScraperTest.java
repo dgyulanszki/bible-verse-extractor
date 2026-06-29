@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -94,7 +96,34 @@ class AbstractStaticSiteScraperTest {
         assertEquals("Missing verse text for 1. Mózes 1:1", exception.getMessage());
     }
 
+    @Test
+    void scrapeExposesAlreadyCollectedVersesWhenALaterChapterFails() {
+        TestAbstractStaticSiteScraper scraper = new TestAbstractStaticSiteScraper(Map.of(
+                "http://example.com/test", "<a href='/test/GEN'>1. Mózes</a>",
+                "http://example.com/test/GEN", "<a href='/test/GEN/1'>1</a><a href='/test/GEN/2'>2</a>",
+                "http://example.com/test/GEN/1", "<dl class='bible-chapter-content'><dt>1</dt><dd><a class='vers'>Kezdetben</a></dd></dl>",
+                "http://example.com/test/GEN/2", "<div>Nincs vers tartalom</div>"
+        ));
+
+        PartialScrapeException exception = assertThrows(PartialScrapeException.class, scraper::scrape);
+
+        assertEquals("Could not find verse container for 1. Mózes 2", exception.getMessage());
+        assertEquals(List.of(
+                new hu.szegedibibliaszol.scraper.model.VerseRecord("Test Translation", "1. Mózes", 1, 1, "Kezdetben")
+        ), exception.partialVerses());
+    }
+
     private static class TestAbstractStaticSiteScraper extends AbstractStaticSiteScraper {
+
+        private final Map<String, String> htmlByUrl;
+
+        private TestAbstractStaticSiteScraper() {
+            this(Map.of());
+        }
+
+        private TestAbstractStaticSiteScraper(Map<String, String> htmlByUrl) {
+            this.htmlByUrl = htmlByUrl;
+        }
 
         @Override
         public String id() {
@@ -124,6 +153,15 @@ class AbstractStaticSiteScraperTest {
         @Override
         protected Pattern chapterLinkPattern(String bookCode) {
             return Pattern.compile("^/test/" + Pattern.quote(bookCode) + "/(.+)$");
+        }
+
+        @Override
+        protected Document loadDocument(String url) {
+            String html = htmlByUrl.get(url);
+            if (html == null) {
+                return super.loadDocument(url);
+            }
+            return Jsoup.parse(html, url);
         }
     }
 }

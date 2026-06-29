@@ -1,5 +1,6 @@
 param(
     [string]$AppName = 'Bible Verse Extractor',
+    [string]$DatabasePath,
     [switch]$SkipBuild
 )
 
@@ -13,6 +14,7 @@ $inputDir = Join-Path $targetDir 'jpackage-input'
 $distDir = Join-Path $appModuleDir 'dist'
 $iconPath = Join-Path $appModuleDir 'src\main\resources\bible-verse-app-icon.ico'
 $mavenWrapper = Join-Path $repoRoot 'mvnw.cmd'
+$packagedDatabaseRelativePath = 'data\bible-verses.db'
 
 function Require-Command {
     param([string]$Name)
@@ -48,6 +50,39 @@ function Resolve-AppVersion {
     return $version
 }
 
+function Resolve-DatabaseFile {
+    param(
+        [string]$ConfiguredDatabasePath,
+        [string]$AppModuleDirectory
+    )
+
+    $candidatePaths = @()
+
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredDatabasePath)) {
+        $candidatePaths += $ConfiguredDatabasePath
+    }
+
+    $candidatePaths += (Join-Path $AppModuleDirectory $packagedDatabaseRelativePath)
+    $candidatePaths += (Join-Path $HOME 'bible-verses.db')
+
+    foreach ($candidatePath in $candidatePaths) {
+        if ([string]::IsNullOrWhiteSpace($candidatePath)) {
+            continue
+        }
+
+        $expandedPath = [Environment]::ExpandEnvironmentVariables($candidatePath)
+        if (Test-Path -LiteralPath $expandedPath -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $expandedPath).Path
+        }
+    }
+
+    throw (
+        "Could not find the SQLite database to package. Checked these locations: " +
+        ($candidatePaths -join ', ') +
+        ". Run the scraper first or pass -DatabasePath with the database file to bundle."
+    )
+}
+
 Push-Location $repoRoot
 try {
     if (-not (Test-Path $mavenWrapper)) {
@@ -66,11 +101,15 @@ try {
 
     $appJar = Resolve-AppJar -SearchDir $targetDir
     $appVersion = Resolve-AppVersion -JarFile $appJar
+      $databaseFile = Resolve-DatabaseFile -ConfiguredDatabasePath $DatabasePath -AppModuleDirectory $appModuleDir
 
     Write-Host 'Preparing jpackage input...' -ForegroundColor Cyan
     Remove-Item -Recurse -Force $distDir, $inputDir -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $inputDir | Out-Null
     Copy-Item -Path $appJar.FullName -Destination (Join-Path $inputDir $appJar.Name)
+      New-Item -ItemType Directory -Path (Split-Path -Parent (Join-Path $inputDir $packagedDatabaseRelativePath)) -Force | Out-Null
+      Copy-Item -Path $databaseFile -Destination (Join-Path $inputDir $packagedDatabaseRelativePath)
+      Write-Host ('Bundling SQLite database: ' + $databaseFile) -ForegroundColor Cyan
 
     $jpackageArgs = @(
         '--type', 'app-image',
@@ -79,7 +118,9 @@ try {
         '--main-jar', $appJar.Name,
         '--dest', $distDir,
         '--app-version', $appVersion,
-        '--vendor', 'Bible Verse Tool'
+            '--vendor', 'Bible Verse Tool',
+            '--java-options', '--enable-native-access=ALL-UNNAMED',
+            '--java-options', '-Dapp.database.path=$APPDIR\data\bible-verses.db'
     )
 
     if (Test-Path $iconPath) {

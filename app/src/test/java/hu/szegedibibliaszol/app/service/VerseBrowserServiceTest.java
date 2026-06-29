@@ -122,6 +122,19 @@ class VerseBrowserServiceTest {
     }
 
     @Test
+    void databaseBackedTranslationsAreCached() throws Exception {
+        Path databasePath = Files.createTempFile("verse-browser-service-cache", ".db");
+        populateVersesTable(databasePath);
+        CountingJdbcTemplate jdbcTemplate = new CountingJdbcTemplate(jdbcTemplate(databasePath));
+
+        VerseBrowserService verseBrowserService = new VerseBrowserService(jdbcTemplate, databasePath);
+
+        assertEquals(List.of("Revideált Károli", "Károli"), verseBrowserService.getTranslations());
+        assertEquals(List.of("Revideált Károli", "Károli"), verseBrowserService.getTranslations());
+        assertEquals(1, jdbcTemplate.queryCount());
+    }
+
+    @Test
     void databaseBackedQueriesReturnEmptyListsWhenDatabaseFileIsMissing() {
         VerseBrowserService verseBrowserService = new VerseBrowserService(
                 mock(JdbcTemplate.class),
@@ -219,6 +232,26 @@ class VerseBrowserServiceTest {
         @Override
         public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
             throw exception;
+        }
+    }
+
+    private static final class CountingJdbcTemplate extends JdbcTemplate {
+
+        private final JdbcTemplate delegate;
+        private int queryCount;
+
+        private CountingJdbcTemplate(JdbcTemplate delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
+            queryCount++;
+            return delegate.query(sql, rowMapper, args);
+        }
+
+        private int queryCount() {
+            return queryCount;
         }
     }
 }

@@ -33,15 +33,19 @@ public abstract class AbstractStaticSiteScraper {
         List<VerseRecord> verses = new ArrayList<>();
 
         log.info("Starting static scrape of translation '{}' with {} books from {}", translation(), books.size(), mainPageUrl);
-        for (BookLink book : books) {
-            String bookPageUrl = buildUrl(bookPath(book.code()));
-            List<Integer> chapters = extractChapters(loadDocument(bookPageUrl), book.code());
-            log.info("Scraping {} chapters from {} ({})", chapters.size(), book.name(), translation());
+        try {
+            for (BookLink book : books) {
+                String bookPageUrl = buildUrl(bookPath(book.code()));
+                List<Integer> chapters = extractChapters(loadDocument(bookPageUrl), book.code());
+                log.info("Scraping {} chapters from {} ({})", chapters.size(), book.name(), translation());
 
-            for (Integer chapterNumber : chapters) {
-                String chapterPageUrl = buildUrl(chapterPath(book.code(), chapterNumber));
-                verses.addAll(extractVerses(loadDocument(chapterPageUrl), book.name(), chapterNumber));
+                for (Integer chapterNumber : chapters) {
+                    String chapterPageUrl = buildUrl(chapterPath(book.code(), chapterNumber));
+                    verses.addAll(extractVerses(loadDocument(chapterPageUrl), book.name(), chapterNumber));
+                }
             }
+        } catch (RuntimeException ex) {
+            throw new PartialScrapeException(ex.getMessage(), ex, verses);
         }
 
         log.info("Static scraping collected {} verses for {}.", verses.size(), translation());

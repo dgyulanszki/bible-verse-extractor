@@ -146,7 +146,8 @@ class StaticRevidealtKaroliScraperTest {
         IllegalStateException exception = assertThrows(IllegalStateException.class, staticSiteScraper::scrape);
 
         assertEquals("Could not parse verse number: X", exception.getMessage());
-        assertInstanceOf(NumberFormatException.class, exception.getCause());
+        assertInstanceOf(IllegalStateException.class, exception.getCause());
+        assertInstanceOf(NumberFormatException.class, exception.getCause().getCause());
     }
 
     @Test
