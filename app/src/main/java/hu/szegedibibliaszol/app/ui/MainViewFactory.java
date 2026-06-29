@@ -1,15 +1,13 @@
 package hu.szegedibibliaszol.app.ui;
 
+import hu.szegedibibliaszol.app.ApplicationVersion;
 import hu.szegedibibliaszol.app.service.UiSessionService;
 import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -59,7 +57,6 @@ public class MainViewFactory {
     private static final String PALE_BLUE = "#EAF2FB";
     private static final String PANEL_WHITE = "#FFFFFF";
     private static final String RANGE_RESET_BUTTON_TEXT = "↺";
-    private static final Map<String, String> CANONICAL_BOOK_NAMES_BY_KEY = createCanonicalBookNamesByKey();
 
     private final VerseBrowserService verseBrowserService;
     private final UiSessionService uiSessionService;
@@ -231,6 +228,14 @@ public class MainViewFactory {
         subtitleLabel.setStyle("-fx-text-fill: " + PALE_BLUE + ";");
         bindLabelTooltip(subtitleLabel);
 
+        Label versionLabel = new Label(ApplicationVersion.current());
+        versionLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " + PALE_BLUE + ";");
+        bindLabelTooltip(versionLabel);
+
+        HBox footerRow = new HBox(versionLabel);
+        footerRow.setAlignment(Pos.CENTER_RIGHT);
+        footerRow.setPadding(new Insets(2, 12, 0, 12));
+
         VBox mainContent = new VBox(6,
                 titleLabel,
                 subtitleLabel,
@@ -239,7 +244,8 @@ public class MainViewFactory {
                 rangeSelectionsBox,
                 addRangeRow,
                 statusLabel,
-                createContentPanel()
+                createContentPanel(),
+                footerRow
         );
         mainContent.setPadding(new Insets(16));
         mainContent.setStyle("-fx-background-color: linear-gradient(to bottom, " + DEEP_BLUE + ", " + ACCENT_BLUE + ");");
@@ -345,7 +351,7 @@ public class MainViewFactory {
                 .map(verseRow -> verseRow.verse() + lineSeparator + verseRow.text())
                 .reduce((left, right) -> left + lineSeparator + lineSeparator + right)
                 .orElseThrow();
-        return canonicalBookName(firstVerse.book())
+        return BookNameCanonicalizer.canonicalBookName(firstVerse.book())
                 + " "
                 + firstVerse.chapter()
                 + ":"
@@ -1005,91 +1011,6 @@ public class MainViewFactory {
         return valuesWithDefault;
     }
 
-    private String canonicalBookName(String book) {
-        return CANONICAL_BOOK_NAMES_BY_KEY.getOrDefault(normalizeBookNameKey(book), book);
-    }
-
-    private static Map<String, String> createCanonicalBookNamesByKey() {
-        Map<String, String> canonicalBookNamesByKey = new LinkedHashMap<>();
-        addCanonicalBookName(canonicalBookNamesByKey, "1Mózes");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Mózes");
-        addCanonicalBookName(canonicalBookNamesByKey, "3Mózes");
-        addCanonicalBookName(canonicalBookNamesByKey, "4Mózes");
-        addCanonicalBookName(canonicalBookNamesByKey, "5Mózes");
-        addCanonicalBookName(canonicalBookNamesByKey, "Józsué");
-        addCanonicalBookName(canonicalBookNamesByKey, "Bírák");
-        addCanonicalBookName(canonicalBookNamesByKey, "Ruth");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Sámuel");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Sámuel");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Királyok");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Királyok");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Krónikák");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Krónikák");
-        addCanonicalBookName(canonicalBookNamesByKey, "Ezsdrás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Nehémiás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Eszter");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jób");
-        addCanonicalBookName(canonicalBookNamesByKey, "Zsoltárok");
-        addCanonicalBookName(canonicalBookNamesByKey, "Példabeszédek");
-        addCanonicalBookName(canonicalBookNamesByKey, "Prédikátor");
-        addCanonicalBookName(canonicalBookNamesByKey, "Énekek éneke", "Énekek");
-        addCanonicalBookName(canonicalBookNamesByKey, "Ézsaiás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jeremiás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jeremiás siralmai", "Jeremiássiralmai");
-        addCanonicalBookName(canonicalBookNamesByKey, "Ezékiel");
-        addCanonicalBookName(canonicalBookNamesByKey, "Dániel");
-        addCanonicalBookName(canonicalBookNamesByKey, "Hóseás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jóel");
-        addCanonicalBookName(canonicalBookNamesByKey, "Ámós", "Ámósz");
-        addCanonicalBookName(canonicalBookNamesByKey, "Abdiás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jónás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Mikeás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Náhum");
-        addCanonicalBookName(canonicalBookNamesByKey, "Habakuk");
-        addCanonicalBookName(canonicalBookNamesByKey, "Sofóniás", "Zofóniás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Aggeus", "Haggeus");
-        addCanonicalBookName(canonicalBookNamesByKey, "Zakariás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Malakiás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Máté");
-        addCanonicalBookName(canonicalBookNamesByKey, "Márk");
-        addCanonicalBookName(canonicalBookNamesByKey, "Lukács");
-        addCanonicalBookName(canonicalBookNamesByKey, "János");
-        addCanonicalBookName(canonicalBookNamesByKey, "Apostolok Cselekedetei", "Cselekedetek");
-        addCanonicalBookName(canonicalBookNamesByKey, "Róma");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Korintus", "1Korinthus");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Korintus", "2Korinthus");
-        addCanonicalBookName(canonicalBookNamesByKey, "Galata");
-        addCanonicalBookName(canonicalBookNamesByKey, "Efezus");
-        addCanonicalBookName(canonicalBookNamesByKey, "Filippi");
-        addCanonicalBookName(canonicalBookNamesByKey, "Kolossé");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Thessalonika", "1Thesszalonika");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Thessalonika", "2Thesszalonika");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Timóteus");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Timóteus");
-        addCanonicalBookName(canonicalBookNamesByKey, "Titusz");
-        addCanonicalBookName(canonicalBookNamesByKey, "Filemon");
-        addCanonicalBookName(canonicalBookNamesByKey, "Zsidók");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jakab");
-        addCanonicalBookName(canonicalBookNamesByKey, "1Péter");
-        addCanonicalBookName(canonicalBookNamesByKey, "2Péter");
-        addCanonicalBookName(canonicalBookNamesByKey, "1János");
-        addCanonicalBookName(canonicalBookNamesByKey, "2János");
-        addCanonicalBookName(canonicalBookNamesByKey, "3János");
-        addCanonicalBookName(canonicalBookNamesByKey, "Júdás");
-        addCanonicalBookName(canonicalBookNamesByKey, "Jelenések");
-        return canonicalBookNamesByKey;
-    }
-
-    private static void addCanonicalBookName(Map<String, String> canonicalBookNamesByKey, String canonicalName, String... aliases) {
-        canonicalBookNamesByKey.put(normalizeBookNameKey(canonicalName), canonicalName);
-        for (String alias : aliases) {
-            canonicalBookNamesByKey.put(normalizeBookNameKey(alias), canonicalName);
-        }
-    }
-
-    private static String normalizeBookNameKey(String book) {
-        return book.toLowerCase(Locale.ROOT).replaceAll("[\\s.]", "");
-    }
 
     private <T> void updateEditorText(ComboBox<T> comboBox, T value) {
         runWithEditorUpdate(comboBox, () -> comboBox.getEditor().setText(value == null ? "" : String.valueOf(value)));

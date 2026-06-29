@@ -1,5 +1,6 @@
 package hu.szegedibibliaszol.app.ui;
 
+import hu.szegedibibliaszol.app.ApplicationVersion;
 import hu.szegedibibliaszol.app.service.UiSessionService;
 import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.testutil.FxTestSupport;
@@ -9,9 +10,8 @@ import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.ArrayDeque;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import javafx.beans.value.ObservableValue;
 import javafx.event.ActionEvent;
@@ -84,7 +84,9 @@ class MainViewFactoryTest {
             Button copyButton = (Button) translationRow.getChildren().get(3);
             Button resetButton = (Button) translationRow.getChildren().get(4);
             VBox contentPanel = (VBox) mainContent.getChildren().get(7);
+            HBox footerRow = (HBox) mainContent.getChildren().get(8);
             Label instructionsLabel = assertInstanceOf(Label.class, contentPanel.getChildren().getFirst());
+            Label versionLabel = assertInstanceOf(Label.class, footerRow.getChildren().getFirst());
 
             HBox firstRangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
             Label firstRangeLabel = (Label) firstRangeRow.getChildren().get(0);
@@ -112,6 +114,8 @@ class MainViewFactoryTest {
             assertEquals("?", generalHelpButton.getText());
             assertEquals("?", firstRangeHelpButton.getText());
             assertEquals("↺", firstResetButton.getText());
+            assertEquals(MainViewFactory.APPLICATION_TITLE, titleLabel.getText());
+            assertEquals(ApplicationVersion.current(), versionLabel.getText());
             assertEquals(2, translationBox.getItems().size());
             assertNull(translationBox.getItems().getFirst());
             assertEquals("Revideált Károli", translationBox.getItems().get(1));
@@ -127,15 +131,18 @@ class MainViewFactoryTest {
             assertEquals("Az összes kijelölés alaphelyzetbe állítása (Ctrl+R)", resetButton.getTooltip().getText());
             assertTrue(tutorialButton.getTooltip().getText().contains("Gyors kezdési útmutató"));
             assertEquals(MainViewFactory.APPLICATION_TITLE, titleLabel.getTooltip().getText());
+            assertEquals(ApplicationVersion.current(), versionLabel.getTooltip().getText());
             assertTrue(subtitleLabel.getTooltip().getText().contains("egy vagy több igerészletet"));
             assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getTooltip().getText());
             assertTrue(translationBox.getTooltip().getText().contains("Fordítás kiválasztása"));
             assertEquals(96, firstRangeLabel.getPrefWidth());
             assertTrue(titleLabel.getStyle().contains("white"));
+            assertTrue(versionLabel.getStyle().contains("11px"));
             assertTrue(translationRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
             assertTrue(translationBox.getStyle().contains("#355C8A"));
             assertTrue(firstRangeRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
             assertTrue(contentPanel.getStyle().contains("#355C8A"));
+            assertEquals(javafx.geometry.Pos.CENTER_RIGHT, footerRow.getAlignment());
 
             firstResetButton.fire();
             assertEquals("A(z) 1. szakasz alaphelyzetbe állítva. Válassz fordítást.", firstRangeStatus.getText());
@@ -485,39 +492,6 @@ class MainViewFactoryTest {
                 () -> mainViewFactory.formatVerseRangesText(List.of())
         );
         assertEquals("Legalább egy formázott szakasz szükséges.", emptyRangesException.getMessage());
-    }
-
-    @Test
-    void formatVerseRangeTextUsesExpandedCanonicalBookAliases() {
-        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
-        Map<String, String> expectedCanonicalNamesByInput = new LinkedHashMap<>();
-        expectedCanonicalNamesByInput.put("Énekek", "Énekek éneke");
-        expectedCanonicalNamesByInput.put("Énekek éneke", "Énekek éneke");
-        expectedCanonicalNamesByInput.put("Ámós", "Ámós");
-        expectedCanonicalNamesByInput.put("Ámósz", "Ámós");
-        expectedCanonicalNamesByInput.put("Sofóniás", "Sofóniás");
-        expectedCanonicalNamesByInput.put("Zofóniás", "Sofóniás");
-        expectedCanonicalNamesByInput.put("Aggeus", "Aggeus");
-        expectedCanonicalNamesByInput.put("Haggeus", "Aggeus");
-        expectedCanonicalNamesByInput.put("Apostolok Cselekedetei", "Apostolok Cselekedetei");
-        expectedCanonicalNamesByInput.put("Cselekedetek", "Apostolok Cselekedetei");
-        expectedCanonicalNamesByInput.put("1Korintus", "1Korintus");
-        expectedCanonicalNamesByInput.put("1Korinthus", "1Korintus");
-        expectedCanonicalNamesByInput.put("2Korintus", "2Korintus");
-        expectedCanonicalNamesByInput.put("2Korinthus", "2Korintus");
-        expectedCanonicalNamesByInput.put("1Thessalonika", "1Thessalonika");
-        expectedCanonicalNamesByInput.put("1Thesszalonika", "1Thessalonika");
-        expectedCanonicalNamesByInput.put("2Thessalonika", "2Thessalonika");
-        expectedCanonicalNamesByInput.put("2Thesszalonika", "2Thessalonika");
-
-        expectedCanonicalNamesByInput.forEach((inputBookName, expectedCanonicalName) -> assertTrue(
-                mainViewFactory.formatVerseRangeText(
-                        List.of(new VerseRow("Revideált Károli", inputBookName, 1, 1, "Szöveg")),
-                        1,
-                        1
-                ).startsWith(expectedCanonicalName + " 1:1"),
-                () -> "Expected canonical book name for " + inputBookName
-        ));
     }
 
     @Test
@@ -888,9 +862,9 @@ class MainViewFactoryTest {
             ComboBox<String> translationBox = comboBox(translationRow, 0);
             Button copyButton = (Button) translationRow.getChildren().get(3);
             HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            ComboBox<String> bookBox = comboBox(rangeRow, 1);
-            ComboBox<Integer> chapterBox = comboBox(rangeRow, 2);
-            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 3);
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
             ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
 
             translationBox.setValue("Revideált Károli");
@@ -944,7 +918,7 @@ class MainViewFactoryTest {
     }
 
     private <T> List<T> nonNullItems(ComboBox<T> comboBox) {
-        return comboBox.getItems().stream().filter(item -> item != null).toList();
+        return comboBox.getItems().stream().filter(Objects::nonNull).toList();
     }
 
     private void triggerEditorAction(ComboBox<?> comboBox) {

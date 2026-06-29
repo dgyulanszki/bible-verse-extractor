@@ -1,0 +1,68 @@
+# One row per canonical book: canonical<TAB>Revideált Károli<TAB>Károli<TAB>Revideált Új Fordítás (RÚF)<TAB>Egyszerű fordítás (EFO)
+canonical	Revideált Károli	Károli	Revideált Új Fordítás (RÚF)	Egyszerű fordítás (EFO)
+1Mózes	1. Mózes	Mózes I. könyve	Mózes első könyve	Mózes első könyve
+2Mózes	2. Mózes	Mózes II. könyve	Mózes második könyve	Mózes második könyve
+3Mózes	3. Mózes	Mózes III. könyve	Mózes harmadik könyve	Mózes harmadik könyve
+4Mózes	4. Mózes	Mózes IV. könyve	Mózes negyedik könyve	Mózes negyedik könyve
+5Mózes	5. Mózes	Mózes V. könyve	Mózes ötödik könyve	Mózes ötödik könyve
+Józsué	Józsué	Józsué könyve	Józsué könyve	Józsué könyve
+Bírák	Bírák	Bírák könyve	A bírák könyve	A bírák könyve
+Ruth	Ruth	Ruth könyve	Ruth könyve	Ruth könyve
+1Sámuel	1. Sámuel	Sámuel I. könyve	Sámuel első könyve	Sámuel első könyve
+2Sámuel	2. Sámuel	Sámuel II. könyve	Sámuel második könyve	Sámuel második könyve
+1Királyok	1. Királyok	Királyok I. könyve	A királyok első könyve	A királyok első könyve
+2Királyok	2. Királyok	Királyok II. könyve	A királyok második könyve	A királyok második könyve
+1Krónikák	1. Krónikák	Krónikák I. könyve	A krónikák első könyve	A krónikák első könyve
+2Krónikák	2. Krónikák	Krónikák II. könyve	A krónikák második könyve	A krónikák második könyve
+Ezsdrás	Ezsdrás	Ezsdrás könyve	Ezsdrás könyve	Ezsdrás könyve
+Nehémiás	Nehémiás	Nehémiás könyve	Nehémiás könyve	Nehémiás könyve
+Eszter	Eszter	Eszter könyve	Eszter könyve	Eszter könyve
+Jób	Jób	Jób könyve	Jób könyve	Jób könyve
+Zsoltárok	Zsoltárok	Zsoltárok könyve	A Zsoltárok könyve	A zsoltárok könyve
+Példabeszédek	Példabeszédek	Példabeszédek könyve	A példabeszédek könyve	A példabeszédek könyve
+Prédikátor	Prédikátor	Prédikátor könyve	A prédikátor könyve	A prédikátor könyve
+Énekek éneke	Énekek éneke	Énekek éneke	Énekek éneke	Énekek éneke
+Ézsaiás	Ézsaiás	Ézsaiás könyve	Ézsaiás próféta könyve	Ézsaiás próféta könyve
+Jeremiás	Jeremiás	Jeremiás könyve	Jeremiás próféta könyve	Jeremiás próféta könyve
+Jeremiás siralmai	Jeremiás Siralmai	Jeremiás siralmai	Jeremiás siralmai	Jeremiás siralmai
+Ezékiel	Ezékiel	Ezékiel könyve	Ezékiel próféta könyve	Ezékiel próféta könyve
+Dániel	Dániel	Dániel könyve	Dániel próféta könyve	Dániel próféta könyve
+Hóseás	Hóseás	Hóseás könyve	Hóseás próféta könyve	Hóseás próféta könyve
+Jóel	Jóel	Jóel könyve	Jóel próféta könyve	Jóel próféta könyve
+Ámós	Ámós	Ámos könyve	Ámósz próféta könyve	Ámósz próféta könyve
+Abdiás	Abdiás	Abdiás könyve	Abdiás próféta könyve	Abdiás próféta könyve
+Jónás	Jónás	Jónás könyve	Jónás próféta könyve	Jónás próféta könyve
+Mikeás	Mikeás	Mikeás könyve	Mikeás próféta könyve	Mikeás próféta könyve
+Náhum	Náhum	Náhum könyve	Náhum próféta könyve	Náhum próféta könyve
+Habakuk	Habakuk	Habakuk könyve	Habakuk próféta könyve	Habakuk próféta könyve
+Sofóniás	Sofóniás	Sofóniás könyve	Zofóniás próféta könyve	Zofóniás próféta könyve
+Aggeus	Aggeus	Aggeus könyve	Haggeus próféta könyve	Haggeus próféta könyve
+Zakariás	Zakariás	Zakariás könyve	Zakariás próféta könyve	Zakariás próféta könyve
+Malakiás	Malakiás	Malakiás könyve	Malakiás próféta könyve	Malakiás próféta könyve
+Máté	Máté	Máté Evangéliuma	Máté evangéliuma	Máté evangéliuma
+Márk	Márk	Márk Evangéliuma	Márk evangéliuma	Márk evangéliuma
+Lukács	Lukács	Lukács Evangéliuma	Lukács evangéliuma	Lukács evangéliuma
+János	János	János Evangéliuma	János evangéliuma	János evangéliuma
+Apostolok Cselekedetei	Apostolok Cselekedetei	Apostolok Cselekedetei	Az apostolok cselekedetei	Az apostolok cselekedetei
+Róma	Róma	Róma levél	Pál levele a rómaiakhoz	Pál levele a rómaiakhoz
+1Korintus	1. Korintus	I. Korintus levél	Pál első levele a korinthusiakhoz	Pál első levele a korinthusiakhoz
+2Korintus	2. Korintus	II. Korintus levél	Pál második levele a korinthusiakhoz	Pál második levele a korinthusiakhoz
+Galata	Galata	Galata levél	Pál levele a galatákhoz	Pál levele a galatákhoz
+Efezus	Efézus	Efézusi levél	Pál levele az efezusiakhoz	Pál levele az efezusiakhoz
+Filippi	Filippi	Filippi levél	Pál levele a filippiekhez	Pál levele a filippiekhez
+Kolossé	Kolossé	Kolosse levél	Pál levele a kolosséiakhoz	Pál levele a kolosséiakhoz
+1Thessalonika	1. Thessalonika	I. Thessalonika levél	Pál első levele a thesszalonikaiakhoz	Pál első levele a thesszalonikaiakhoz
+2Thessalonika	2. Thessalonika	II. Thessalonika levél	Pál második levele a thesszalonikaiakhoz	Pál második levele a thesszalonikaiakhoz
+1Timóteus	1. Timóteus	I. Timóteus levél	Pál első levele Timóteushoz	Pál első levele Timóteushoz
+2Timóteus	2. Timóteus	II. Timóteus levél	Pál második levele Timóteushoz	Pál második levele Timóteushoz
+Titusz	Titusz	Titus levél	Pál levele Tituszhoz	Pál levele Tituszhoz
+Filemon	Filemon	Filemon levél	Pál levele Filemonhoz	Pál levele Filemonhoz
+Zsidók	Zsidókhoz írt levél	Zsidó levél	A zsidókhoz írt levél	A zsidókhoz írt levél
+Jakab	Jakab	Jakab levél	Jakab levele	Jakab levele
+1Péter	1. Péter	I. Péter levél	Péter első levele	Péter első levele
+2Péter	2. Péter	II. Péter levél	Péter második levele	Péter második levele
+1János	1. János	I. János levél	János első levele	János első levele
+2János	2. János	II. János levél	János második levele	János második levele
+3János	3. János	III. János levél	János harmadik levele	János harmadik levele
+Júdás	Júdás	Júdás levél	Júdás levele	Júdás levele
+Jelenések	Jelenések	Jelenések könyve	A jelenések könyve	A jelenések könyve
