@@ -91,7 +91,7 @@ public abstract class AbstractStaticSiteScraper {
         Map<Integer, Integer> chaptersByNumber = new LinkedHashMap<>();
 
         for (Element link : bookPage.select("a[href]")) {
-            Integer chapterNumber = extractChapterNumber(link.attr("href"), link, bookCode);
+            Integer chapterNumber = extractChapterNumber(link.attr("href"), bookCode);
             if (chapterNumber != null) {
                 chaptersByNumber.putIfAbsent(chapterNumber, chapterNumber);
             }
@@ -141,14 +141,14 @@ public abstract class AbstractStaticSiteScraper {
     }
 
     protected String extractBookName(Element link) {
-        String bookName = normalizeText(link.text());
+        String bookName = ScraperTextSupport.normalizeText(link.text());
         if (bookName.isBlank()) {
             throw new IllegalStateException("Blank book name for link: " + link.attr("href"));
         }
         return bookName;
     }
 
-    protected Integer extractChapterNumber(String href, Element link, String bookCode) {
+    protected Integer extractChapterNumber(String href, String bookCode) {
         String normalizedHref = normalizeHref(href);
         Matcher matcher = chapterLinkPattern(bookCode).matcher(normalizedHref);
         if (!matcher.matches()) {
@@ -179,14 +179,14 @@ public abstract class AbstractStaticSiteScraper {
     }
 
     protected int extractVerseNumber(Element verseNumberElement, String bookName, int chapterNumber) {
-        return parseNumber(normalizeText(verseNumberElement.text()), "verse number");
+        return parseNumber(ScraperTextSupport.normalizeText(verseNumberElement.text()), "verse number");
     }
 
     protected String extractVerseText(Element verseTextElement, String bookName, int chapterNumber, int verseNumber) {
         Element verseAnchor = verseTextElement.selectFirst("a.vers");
         String verseText = verseAnchor != null
-                ? normalizeText(verseAnchor.text())
-                : normalizeText(verseTextElement.text());
+                ? ScraperTextSupport.normalizeText(verseAnchor.text())
+                : ScraperTextSupport.normalizeText(verseTextElement.text());
 
         if (verseText.isBlank()) {
             throw new IllegalStateException("Blank verse text for " + bookName + " " + chapterNumber + ":" + verseNumber);
@@ -215,9 +215,6 @@ public abstract class AbstractStaticSiteScraper {
         return trimmedHref;
     }
 
-    protected String normalizeText(String text) {
-        return text.replace('\u00A0', ' ').trim().replaceAll("\\s+", " ");
-    }
 
     protected record BookLink(String code, String name) {
     }

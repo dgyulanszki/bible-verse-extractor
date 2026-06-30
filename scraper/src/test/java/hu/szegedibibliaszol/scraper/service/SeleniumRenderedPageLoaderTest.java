@@ -22,10 +22,23 @@ class SeleniumRenderedPageLoaderTest {
 
     @Test
     void defaultBrowserCandidatesExposeAllSupportedBrowsers() {
-        List<SeleniumRenderedPageLoader.BrowserDriverCandidate> browserCandidates = SeleniumRenderedPageLoader.defaultBrowserCandidates();
+        AtomicInteger createdDrivers = new AtomicInteger();
+        AtomicInteger quitCount = new AtomicInteger();
+        List<SeleniumRenderedPageLoader.BrowserDriverCandidate> browserCandidates = SeleniumRenderedPageLoader.defaultBrowserCandidates(
+                () -> {
+                    createdDrivers.incrementAndGet();
+                    return browserDriver(SeleniumRenderedPageLoaderTest::validRenderedHtml, new AtomicInteger(), quitCount, null);
+                }
+        );
 
         assertEquals(List.of("Google Chrome"),
                 browserCandidates.stream().map(SeleniumRenderedPageLoader.BrowserDriverCandidate::name).toList());
+
+        WebDriver webDriver = browserCandidates.getFirst().factory().get();
+        webDriver.quit();
+
+        assertEquals(1, createdDrivers.get());
+        assertEquals(1, quitCount.get());
     }
 
     @Test
@@ -36,7 +49,7 @@ class SeleniumRenderedPageLoaderTest {
 
     @Test
     void chromeOptionsAddHeadlessArgumentWhenRequested() {
-        withSystemProperty(HEADLESS_BROWSER_PROPERTY, "true", () ->
+        withHeadlessBrowserPropertyEnabled(() ->
                 assertTrue(SeleniumRenderedPageLoader.chromeOptions().asMap().toString().contains("--headless=new"))
         );
     }
@@ -54,7 +67,7 @@ class SeleniumRenderedPageLoaderTest {
         AtomicInteger navigateCount = new AtomicInteger();
         AtomicInteger quitCount = new AtomicInteger();
         AtomicInteger createdDrivers = new AtomicInteger();
-        WebDriver webDriver = browserDriver(() -> validRenderedHtml(), navigateCount, quitCount, null);
+        WebDriver webDriver = browserDriver(SeleniumRenderedPageLoaderTest::validRenderedHtml, navigateCount, quitCount, null);
         SeleniumRenderedPageLoader renderedPageLoader = new SeleniumRenderedPageLoader(
                 List.of(
                         new SeleniumRenderedPageLoader.BrowserDriverCandidate("Broken Browser", () -> {
@@ -86,7 +99,7 @@ class SeleniumRenderedPageLoaderTest {
         SeleniumRenderedPageLoader renderedPageLoader = new SeleniumRenderedPageLoader(
                 List.of(new SeleniumRenderedPageLoader.BrowserDriverCandidate("Stub Browser", () -> {
                     createdDrivers.incrementAndGet();
-                    return browserDriver(() -> validRenderedHtml(), navigateCount, quitCount, null);
+                    return browserDriver(SeleniumRenderedPageLoaderTest::validRenderedHtml, navigateCount, quitCount, null);
                 })),
                 Duration.ofSeconds(1),
                 Duration.ofMillis(20)
@@ -126,18 +139,6 @@ class SeleniumRenderedPageLoaderTest {
         assertEquals("Could not start Browser B browser for dynamic scraping.", exception.getCause().getMessage());
     }
 
-    @Test
-    void defaultChromeCandidateFactoryCanStartAndCloseHeadlessChrome() {
-        withSystemProperty(HEADLESS_BROWSER_PROPERTY, "true", () -> {
-            WebDriver webDriver = SeleniumRenderedPageLoader.defaultBrowserCandidates().getFirst().factory().get();
-
-            try {
-                assertNotNull(webDriver);
-            } finally {
-                webDriver.quit();
-            }
-        });
-    }
 
     @Test
     void loadThrowsClearMessageWhenChallengePagePersists() {
@@ -145,7 +146,7 @@ class SeleniumRenderedPageLoaderTest {
         SeleniumRenderedPageLoader renderedPageLoader = new SeleniumRenderedPageLoader(
                 List.of(new SeleniumRenderedPageLoader.BrowserDriverCandidate(
                         "Stub Browser",
-                        () -> browserDriver(() -> clientChallengeHtml(), new AtomicInteger(), quitCount, null)
+                        () -> browserDriver(SeleniumRenderedPageLoaderTest::clientChallengeHtml, new AtomicInteger(), quitCount, null)
                 )),
                 Duration.ofSeconds(1),
                 Duration.ofMillis(20)
@@ -190,7 +191,8 @@ class SeleniumRenderedPageLoaderTest {
         SeleniumRenderedPageLoader renderedPageLoader = new SeleniumRenderedPageLoader(
                 List.of(new SeleniumRenderedPageLoader.BrowserDriverCandidate(
                         "Stub Browser",
-                        () -> browserDriver(() -> validRenderedHtml(), new AtomicInteger(), new AtomicInteger(), new TimeoutException("boom"))
+                        () -> browserDriver(SeleniumRenderedPageLoaderTest::validRenderedHtml,
+                                new AtomicInteger(), new AtomicInteger(), new TimeoutException("boom"))
                 )),
                 Duration.ofSeconds(1),
                 Duration.ofMillis(20)
@@ -233,21 +235,17 @@ class SeleniumRenderedPageLoaderTest {
         );
     }
 
-    private static void withSystemProperty(String propertyName, String propertyValue, Runnable action) {
-        String previousValue = System.getProperty(propertyName);
+    private static void withHeadlessBrowserPropertyEnabled(Runnable action) {
+        String previousValue = System.getProperty(HEADLESS_BROWSER_PROPERTY);
 
         try {
-            if (propertyValue == null) {
-                System.clearProperty(propertyName);
-            } else {
-                System.setProperty(propertyName, propertyValue);
-            }
+            System.setProperty(HEADLESS_BROWSER_PROPERTY, "true");
             action.run();
         } finally {
             if (previousValue == null) {
-                System.clearProperty(propertyName);
+                System.clearProperty(HEADLESS_BROWSER_PROPERTY);
             } else {
-                System.setProperty(propertyName, previousValue);
+                System.setProperty(HEADLESS_BROWSER_PROPERTY, previousValue);
             }
         }
     }
@@ -258,14 +256,14 @@ class SeleniumRenderedPageLoaderTest {
             AtomicInteger quitCount,
             RuntimeException navigationFailure
     ) {
-        WebDriver.Timeouts timeouts = proxy(WebDriver.Timeouts.class, (proxy, method, args) -> proxy);
-        WebDriver.Options options = proxy(WebDriver.Options.class, (proxy, method, args) -> {
+        WebDriver.Timeouts timeouts = proxy(WebDriver.Timeouts.class, (driverProxy, ignoredMethod, ignoredArgs) -> driverProxy);
+        WebDriver.Options options = proxy(WebDriver.Options.class, (ignoredProxy, method, ignoredArgs) -> {
             if ("timeouts".equals(method.getName())) {
                 return timeouts;
             }
             throw new UnsupportedOperationException(method.getName());
         });
-        WebDriver.Navigation navigation = proxy(WebDriver.Navigation.class, (proxy, method, args) -> {
+        WebDriver.Navigation navigation = proxy(WebDriver.Navigation.class, (ignoredProxy, method, ignoredArgs) -> {
             if ("to".equals(method.getName())) {
                 navigateCount.incrementAndGet();
                 if (navigationFailure != null) {
@@ -275,7 +273,7 @@ class SeleniumRenderedPageLoaderTest {
             }
             throw new UnsupportedOperationException(method.getName());
         });
-        return proxy(WebDriver.class, (proxy, method, args) -> switch (method.getName()) {
+        return proxy(WebDriver.class, (ignoredProxy, method, ignoredArgs) -> switch (method.getName()) {
             case "navigate" -> navigation;
             case "manage" -> options;
             case "getPageSource" -> pageSourceSupplier.get();
@@ -291,7 +289,17 @@ class SeleniumRenderedPageLoaderTest {
 
     @SuppressWarnings("unchecked")
     private static <T> T proxy(Class<T> type, java.lang.reflect.InvocationHandler handler) {
-        return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, handler);
+        return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
+            if (method.getDeclaringClass() == Object.class) {
+                return switch (method.getName()) {
+                    case "toString" -> type.getSimpleName() + "Proxy";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> throw new UnsupportedOperationException(method.getName());
+                };
+            }
+            return handler.invoke(proxy, method, args);
+        });
     }
 
     private static String validRenderedHtml() {

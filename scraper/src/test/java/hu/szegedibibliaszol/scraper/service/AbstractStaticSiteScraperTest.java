@@ -78,7 +78,7 @@ class AbstractStaticSiteScraperTest {
         Element link = Jsoup.parse("<a href=\"/test/GEN/ABC\">ABC</a>").selectFirst("a");
         assertNotNull(link);
 
-        Integer chapterNumber = scraper.extractChapterNumber("/test/GEN/ABC", link, "GEN");
+        Integer chapterNumber = scraper.extractChapterNumber("/test/GEN/ABC", "GEN");
 
         assertNull(chapterNumber);
     }

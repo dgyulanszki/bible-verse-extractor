@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class BookNameCanonicalizerTest {
 
@@ -97,10 +98,25 @@ class BookNameCanonicalizerTest {
     }
 
     @Test
+    void canonicalBookNameReturnsNullWhenInputIsNull() {
+        assertNull(BookNameCanonicalizer.canonicalBookName(null));
+    }
+
+    @Test
     void canonicalBookNamesByKeyReturnsReusableStaticMap() {
         Map<String, String> canonicalBookNamesByKey = BookNameCanonicalizer.canonicalBookNamesByKey();
         assertSame(canonicalBookNamesByKey, BookNameCanonicalizer.canonicalBookNamesByKey());
         assertEquals("1Mózes", canonicalBookNamesByKey.get(BookNameCanonicalizer.normalizeBookNameKey("1. Mózes")));
+    }
+
+    @Test
+    void normalizeBookNameKeyRejectsNullInput() {
+        NullPointerException exception = assertThrows(
+                NullPointerException.class,
+                () -> BookNameCanonicalizer.normalizeBookNameKey(null)
+        );
+
+        assertEquals("book must not be null", exception.getMessage());
     }
 
     @Test

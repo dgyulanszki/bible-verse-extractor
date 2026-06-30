@@ -4,6 +4,7 @@ import hu.szegedibibliaszol.scraper.model.VerseRecord;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -13,6 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -117,12 +119,99 @@ class VerseExportServiceTest {
         assertInstanceOf(SQLException.class, exception.getCause());
     }
 
+    @Test
+    void addsSuppressedRollbackFailureWhenRollbackAlsoFails() {
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                (_, method, _) -> {
+                    if ("rollback".equals(method.getName())) {
+                        throw new SQLException("rollback failure");
+                    }
+                    if ("toString".equals(method.getName())) {
+                        return "FailingRollbackConnection";
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                }
+        );
+        IllegalStateException originalFailure = new IllegalStateException("export failure");
+
+        new VerseExportService().rollbackQuietly(connection, originalFailure);
+
+        assertEquals(1, originalFailure.getSuppressed().length);
+        assertEquals("rollback failure", originalFailure.getSuppressed()[0].getMessage());
+    }
+
+    @Test
+    void rollsBackSchemaChangesWhenBatchPreparationFails() throws Exception {
+        Path tempDirectory = Files.createTempDirectory("verse-export-rollback-test");
+        Path databasePath = tempDirectory.resolve("verses.db");
+        VerseExportService verseExportService = new VerseExportService() {
+            @Override
+            protected String createInsertSql() {
+                return "insert into verses (translation, book, chapter, verse, missing_text) values (?, ?, ?, ?, ?)";
+            }
+        };
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> verseExportService.exportToSqlite(
+                        databasePath,
+                        List.of(new VerseRecord("KJV", "John", 3, 16, "For God so loved the world"))
+                )
+        );
+
+        assertInstanceOf(SQLException.class, exception.getCause());
+        assertFalse(versesTableExists(databasePath));
+    }
+
+    @Test
+    void rejectsNullDatabasePath() {
+        NullPointerException exception = assertThrows(
+                NullPointerException.class,
+                () -> new VerseExportService().exportToSqlite(null, List.of())
+        );
+
+        assertEquals("databasePath must not be null", exception.getMessage());
+    }
+
+    @Test
+    void rejectsNullVerseList() {
+        NullPointerException exception = assertThrows(
+                NullPointerException.class,
+                () -> new VerseExportService().exportToSqlite(Path.of("target", "failure.db"), null)
+        );
+
+        assertEquals("verses must not be null", exception.getMessage());
+    }
+
+    @Test
+    void rejectsNullVerseEntries() {
+        Path databasePath = Path.of("target", "null-verse-entry.db");
+
+        NullPointerException exception = assertThrows(
+                NullPointerException.class,
+                () -> new VerseExportService().exportToSqlite(databasePath, java.util.Collections.singletonList(null))
+        );
+
+        assertEquals("verses must not contain null entries", exception.getMessage());
+    }
+
     private int queryVerseCount(Path databasePath) throws SQLException {
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
              Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery("select count(*) from verses")) {
             resultSet.next();
             return resultSet.getInt(1);
+        }
+    }
+
+    private boolean versesTableExists(Path databasePath) throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("select count(*) from sqlite_master where type = 'table' and name = 'verses'")) {
+            resultSet.next();
+            return resultSet.getInt(1) == 1;
         }
     }
 

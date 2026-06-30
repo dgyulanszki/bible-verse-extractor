@@ -4,6 +4,7 @@ import hu.szegedibibliaszol.scraper.export.VerseExportService;
 import hu.szegedibibliaszol.scraper.model.ScraperConfig;
 import hu.szegedibibliaszol.scraper.model.VerseRecord;
 import hu.szegedibibliaszol.scraper.support.SimpleRateLimiter;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -353,6 +354,32 @@ class ScraperCoordinatorTest {
     }
 
     @Test
+    void runRejectsDynamicStartUrlWhenNoDynamicScraperIsSelected() {
+        ScraperCoordinator scraperCoordinator = new ScraperCoordinator(
+                new ScraperConfig(
+                        Path.of("target", "scraper-coordinator-dynamic-resume-missing.db"),
+                        0,
+                        false,
+                        true,
+                        List.of("all"),
+                        List.of("all"),
+                        Optional.of("https://www.bible.com/bible/198/DAN.12.EFO")
+                ),
+                new CountingRateLimiter(),
+                List.of(),
+                List.of(),
+                new CapturingVerseExportService()
+        );
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, scraperCoordinator::run);
+
+        assertEquals(
+                "scraper.dynamicStartUrl can only be used when exactly one dynamic scraper is selected. Selected ids: []",
+                exception.getMessage()
+        );
+    }
+
+    @Test
     void runPersistsAlreadyCollectedVersesOnFailureWhenFallbackOptionIsEnabled() {
         CountingRateLimiter rateLimiter = new CountingRateLimiter();
         CountingStaticTranslationScraper completedStaticSiteScraper = new CountingStaticTranslationScraper(
@@ -427,6 +454,79 @@ class ScraperCoordinatorTest {
         assertEquals(List.of(
                 new VerseRecord("Revideált Károli", "1. Mózes", 1, 1, "Első")
         ), verseExportService.exportedVerses);
+    }
+
+    @Test
+    void runPersistsAlreadyCollectedVersesWhenPartialFailureContainsNoVerses() {
+        CapturingVerseExportService verseExportService = new CapturingVerseExportService();
+        ScraperCoordinator scraperCoordinator = new ScraperCoordinator(
+                new ScraperConfig(
+                        Path.of("target", "scraper-coordinator-partial-no-extra-verses.db"),
+                        0,
+                        true,
+                        false,
+                        List.of("all"),
+                        List.of("all"),
+                        Optional.empty()
+                ),
+                new CountingRateLimiter(),
+                List.of(
+                        new CountingStaticTranslationScraper(
+                                "revidealt-karoli",
+                                "Revideált Károli",
+                                List.of(new VerseRecord("Revideált Károli", "1. Mózes", 1, 1, "Első"))
+                        ),
+                        new FailingStaticTranslationScraper(
+                                "karoli-gaspar",
+                                "Károli",
+                                List.of(),
+                                "Simulated static scrape failure"
+                        )
+                ),
+                List.of(),
+                verseExportService
+        );
+
+        PartialScrapeException exception = assertThrows(PartialScrapeException.class, scraperCoordinator::run);
+
+        assertEquals("Simulated static scrape failure", exception.getMessage());
+        assertEquals(1, verseExportService.exportCalls);
+        assertEquals(List.of(
+                new VerseRecord("Revideált Károli", "1. Mózes", 1, 1, "Első")
+        ), verseExportService.exportedVerses);
+    }
+
+    @Test
+    void versesToPersistReturnsAlreadyCollectedVersesWhenPartialFailureProvidesNone() throws Exception {
+        ScraperCoordinator scraperCoordinator = new ScraperCoordinator(
+                new ScraperConfig(
+                        Path.of("target", "scraper-coordinator-direct-partial-no-extra-verses.db"),
+                        0,
+                        false,
+                        false,
+                        List.of("all"),
+                        List.of("all"),
+                        Optional.empty()
+                ),
+                new CountingRateLimiter(),
+                List.of(),
+                List.of(),
+                new CapturingVerseExportService()
+        );
+        List<VerseRecord> collectedVerses = List.of(new VerseRecord("Revideált Károli", "1. Mózes", 1, 1, "Első"));
+        PartialScrapeException failure = new PartialScrapeException(
+                "Simulated partial scrape failure",
+                new IllegalStateException("Simulated partial scrape failure"),
+                List.of()
+        );
+
+        Method method = ScraperCoordinator.class.getDeclaredMethod("versesToPersist", List.class, RuntimeException.class);
+        method.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<VerseRecord> versesToPersist = (List<VerseRecord>) method.invoke(scraperCoordinator, collectedVerses, failure);
+
+        assertEquals(collectedVerses, versesToPersist);
     }
 
     @Test

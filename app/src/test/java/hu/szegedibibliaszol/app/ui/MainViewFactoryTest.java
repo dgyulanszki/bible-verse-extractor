@@ -8,12 +8,10 @@ import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import javafx.beans.value.ObservableValue;
 import javafx.event.ActionEvent;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -89,7 +87,7 @@ class MainViewFactoryTest {
             Label versionLabel = assertInstanceOf(Label.class, footerRow.getChildren().getFirst());
 
             HBox firstRangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
-            Label firstRangeLabel = (Label) firstRangeRow.getChildren().get(0);
+            Label firstRangeLabel = (Label) firstRangeRow.getChildren().getFirst();
             ComboBox<String> firstBookBox = comboBox(firstRangeRow, 0);
             ComboBox<Integer> firstChapterBox = comboBox(firstRangeRow, 1);
             Label firstChapterSeparatorLabel = (Label) firstRangeRow.getChildren().get(3);
@@ -197,7 +195,7 @@ class MainViewFactoryTest {
             assertFalse(firstRemoveButton.isDisable());
 
             HBox secondRangeRow = (HBox) rangeSelectionsBox.getChildren().get(1);
-            Label secondRangeLabel = (Label) secondRangeRow.getChildren().get(0);
+            Label secondRangeLabel = (Label) secondRangeRow.getChildren().getFirst();
             ComboBox<String> secondBookBox = comboBox(secondRangeRow, 0);
             ComboBox<Integer> secondChapterBox = comboBox(secondRangeRow, 1);
             ComboBox<Integer> secondFromVerseBox = comboBox(secondRangeRow, 2);
@@ -210,7 +208,7 @@ class MainViewFactoryTest {
             assertNull(secondBookBox.getItems().get(0));
             assertEquals("1. Mózes", secondBookBox.getItems().get(1));
             assertEquals("Zsoltárok", secondBookBox.getItems().get(2));
-            assertFalse(((Button) secondRangeRow.getChildren().get(10)).isVisible());
+            assertFalse(secondRangeRow.getChildren().get(10).isVisible());
 
             secondBookBox.setValue("Zsoltárok");
             assertEquals("A(z) 2. szakaszban a könyv kiválasztva. Válassz fejezetet.", secondRangeStatus.getText());
@@ -637,17 +635,92 @@ class MainViewFactoryTest {
     }
 
     @Test
+    void createRootIgnoresUnavailableSavedTranslationAndKeepsDefaultState() {
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        when(uiSessionService.loadSession()).thenReturn(Optional.of(new AppSessionSnapshot(
+                "Nem elérhető fordítás",
+                List.of(new RangeSelectionSnapshot("1. Mózes", 4, 4, 4))
+        )));
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 4, 4, "Ábel is vitt elsőszülött juhai közül.")
+        )), uiSessionService);
+
+        FxTestSupport.runOnFxThread(() -> {
+            Parent parent = mainViewFactory.createRoot();
+            BorderPane root = (BorderPane) parent;
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+            Label statusLabel = (Label) mainContent.getChildren().get(6);
+
+            ComboBox<String> translationBox = comboBox(translationRow, 0);
+            HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
+
+            assertNull(translationBox.getValue());
+            assertEquals(1, rangeSelectionsBox.getChildren().size());
+            assertNull(bookBox.getValue());
+            assertNull(chapterBox.getValue());
+            assertNull(fromVerseBox.getValue());
+            assertNull(toVerseBox.getValue());
+            assertEquals("A mentett fordítás már nem érhető el, ezért a munkamenet alaphelyzetből indult.", statusLabel.getText());
+            return null;
+        });
+    }
+
+    @Test
+    void createRootClearsUnavailableSavedChapterAndVerseSelections() {
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        when(uiSessionService.loadSession()).thenReturn(Optional.of(new AppSessionSnapshot(
+                "Revideált Károli",
+                List.of(new RangeSelectionSnapshot("1. Mózes", 99, 4, 8))
+        )));
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 4, 4, "Ábel is vitt elsőszülött juhai közül."),
+                new VerseRow("Revideált Károli", "1. Mózes", 4, 5, "Kainra azonban nem tekintett.")
+        )), uiSessionService);
+
+        FxTestSupport.runOnFxThread(() -> {
+            Parent parent = mainViewFactory.createRoot();
+            BorderPane root = (BorderPane) parent;
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+
+            ComboBox<String> translationBox = comboBox(translationRow, 0);
+            HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            ComboBox<Integer> fromVerseBox = comboBox(rangeRow, 2);
+            ComboBox<Integer> toVerseBox = comboBox(rangeRow, 3);
+
+            assertEquals("Revideált Károli", translationBox.getValue());
+            assertEquals("1. Mózes", bookBox.getValue());
+            assertNull(chapterBox.getValue());
+            assertNull(fromVerseBox.getValue());
+            assertNull(toVerseBox.getValue());
+            assertEquals(List.of(4), nonNullItems(chapterBox));
+            assertEquals(List.of(), nonNullItems(fromVerseBox));
+            assertEquals(List.of(), nonNullItems(toVerseBox));
+            return null;
+        });
+    }
+
+    @Test
     void placeholderListCellShowsPlaceholderAndSelectedItemText() {
         FxTestSupport.runOnFxThread(() -> {
             MainViewFactory.PlaceholderListCell<Integer> placeholderListCell = new MainViewFactory.PlaceholderListCell<>("Vers");
 
-            placeholderListCell.applyItem(null, false);
+            placeholderListCell.updateItem(null, false);
             assertEquals("Vers", placeholderListCell.getText());
 
-            placeholderListCell.applyItem(5, false);
+            placeholderListCell.updateItem(5, false);
             assertEquals("5", placeholderListCell.getText());
 
-            placeholderListCell.applyItem(null, true);
+            placeholderListCell.updateItem(null, true);
             assertEquals("Vers", placeholderListCell.getText());
             return null;
         });
@@ -754,7 +827,7 @@ class MainViewFactoryTest {
     }
 
     @Test
-    void privateNumericListenersCoverFocusShowAndNullTranslationPaths() {
+    void numericQuickSelectionCommitsTypedValueThroughRealFocusChangesAndCoversNullTranslationPaths() {
         MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
 
         FxTestSupport.runOnFxThread(() -> {
@@ -763,42 +836,23 @@ class MainViewFactoryTest {
             invokePrivate(mainViewFactory, "replaceComboBoxItems", new Class<?>[]{ComboBox.class, List.class}, comboBox, List.of(4, 14));
 
             Stage stage = new Stage();
+            Button focusTarget = new Button("Más mező");
             try {
-                stage.setScene(new Scene(new VBox(comboBox), 320, 120));
+                stage.setScene(new Scene(new VBox(comboBox, focusTarget), 320, 120));
                 stage.show();
+                FxTestSupport.waitForFxEvents();
                 comboBox.show();
-
-                invokePrivate(
-                        mainViewFactory,
-                        syntheticMethodName(
-                                mainViewFactory,
-                                "lambda$configureNumericQuickSelection$",
-                                new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class}
-                        ),
-                        new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class},
-                        comboBox,
-                        comboBox.getEditor().focusedProperty(),
-                        Boolean.FALSE,
-                        Boolean.TRUE
-                );
 
                 invokePrivate(mainViewFactory, "applyNumericQuickSelection", new Class<?>[]{ComboBox.class, String.class}, comboBox, "14");
                 assertTrue(comboBox.isShowing());
 
+                comboBox.getEditor().requestFocus();
+                FxTestSupport.waitForFxEvents();
+
+                comboBox.getEditor().requestFocus();
                 comboBox.getEditor().setText("4");
-                invokePrivate(
-                        mainViewFactory,
-                        syntheticMethodName(
-                                mainViewFactory,
-                                "lambda$configureNumericQuickSelection$",
-                                new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class}
-                        ),
-                        new Class<?>[]{ComboBox.class, ObservableValue.class, Boolean.class, Boolean.class},
-                        comboBox,
-                        comboBox.getEditor().focusedProperty(),
-                        Boolean.TRUE,
-                        Boolean.FALSE
-                );
+                focusTarget.requestFocus();
+                FxTestSupport.waitForFxEvents();
                 assertEquals(4, comboBox.getValue());
             } finally {
                 stage.close();
@@ -810,33 +864,22 @@ class MainViewFactoryTest {
 
             invokePrivate(
                     mainViewFactory,
-                    syntheticMethodName(
-                            mainViewFactory,
-                            "lambda$createRangeSelectionControls$",
-                            new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, String.class, String.class}
-                    ),
-                    new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, String.class, String.class},
+                    "handleBookSelectionChange",
+                    new Class<?>[]{rangeSelectionClass, String.class, String.class, Runnable.class},
                     rangeSelection,
+                    null,
+                    "1. Mózes",
                     (Runnable) () -> {
-                    },
-                    null,
-                    null,
-                    "1. Mózes"
+                    }
             );
             invokePrivate(
                     mainViewFactory,
-                    syntheticMethodName(
-                            mainViewFactory,
-                            "lambda$createRangeSelectionControls$",
-                            new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, Integer.class, Integer.class}
-                    ),
-                    new Class<?>[]{rangeSelectionClass, Runnable.class, ObservableValue.class, Integer.class, Integer.class},
+                    "handleChapterSelectionChange",
+                    new Class<?>[]{rangeSelectionClass, Integer.class, Runnable.class},
                     rangeSelection,
+                    4,
                     (Runnable) () -> {
-                    },
-                    null,
-                    null,
-                    4
+                    }
             );
             return null;
         });
@@ -939,15 +982,6 @@ class MainViewFactoryTest {
         return method.invoke(target, args);
     }
 
-    private String syntheticMethodName(Object target, String methodPrefix, Class<?>[] parameterTypes) {
-        return Arrays.stream(target.getClass().getDeclaredMethods())
-                .filter(Method::isSynthetic)
-                .filter(method -> method.getName().startsWith(methodPrefix))
-                .filter(method -> Arrays.equals(method.getParameterTypes(), parameterTypes))
-                .map(Method::getName)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Synthetic method not found for prefix: " + methodPrefix));
-    }
 
     private static final class TestMainViewFactory extends MainViewFactory {
 

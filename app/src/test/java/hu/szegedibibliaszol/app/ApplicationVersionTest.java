@@ -18,7 +18,10 @@ class ApplicationVersionTest {
     @Test
     void currentUsesResolvedBuildVersion() {
         assertNotEquals(ApplicationVersion.UNKNOWN_VERSION, ApplicationVersion.current());
-        assertEquals("1.2.1-SNAPSHOT", ApplicationVersion.current());
+        assertEquals(
+                ApplicationVersion.loadVersionFromRepositoryPom(Path.of(System.getProperty("user.dir"))),
+                ApplicationVersion.current()
+        );
     }
 
     @Test

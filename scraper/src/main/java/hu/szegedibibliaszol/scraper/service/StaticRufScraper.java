@@ -71,7 +71,7 @@ public class StaticRufScraper extends AbstractStaticSiteScraper {
     protected String extractVerseText(Element verseTextElement, String bookName, int chapterNumber, int verseNumber) {
         Element verseContent = verseTextElement.clone();
         verseContent.select("a.verse__number, span").remove();
-        String verseText = normalizeText(verseContent.text());
+        String verseText = ScraperTextSupport.normalizeText(verseContent.text());
         if (verseText.isBlank()) {
             throw new IllegalStateException("Blank verse text for " + bookName + " " + chapterNumber + ":" + verseNumber);
         }
@@ -91,7 +91,7 @@ public class StaticRufScraper extends AbstractStaticSiteScraper {
     }
 
     private String extractVerseNumberCandidate(String rawValue) {
-        String normalizedValue = normalizeText(rawValue);
+        String normalizedValue = ScraperTextSupport.normalizeText(rawValue);
         if (normalizedValue.isBlank()) {
             return normalizedValue;
         }

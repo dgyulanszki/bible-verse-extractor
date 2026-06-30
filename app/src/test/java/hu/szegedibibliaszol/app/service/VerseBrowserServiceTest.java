@@ -8,6 +8,7 @@ import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jspecify.annotations.NullMarked;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -71,11 +72,15 @@ class VerseBrowserServiceTest {
         assertEquals(List.of(), verseBrowserService.findVerses("KJV", "John", null, 16));
         assertEquals(List.of(), verseBrowserService.getBooks("NRSV"));
         assertEquals(List.of(), verseBrowserService.getChapters("KJV", "Romans"));
+        assertEquals(List.of(), verseBrowserService.getVerses("KJV", "John", 0));
+        assertEquals(List.of(), verseBrowserService.getVerses("KJV", "John", -1));
         assertEquals(List.of(), verseBrowserService.getVerses("KJV", "John", 99));
+        assertEquals(List.of(), verseBrowserService.findVerses("KJV", "John", 0, null));
         assertEquals(List.of(), verseBrowserService.findVerses("KJV", "John", 3, 99));
         assertEquals(List.of(), verseBrowserService.findVerseRange(null, "John", 3, 16, 17));
         assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", null, 3, 16, 17));
         assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", null, 16, 17));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 0, 16, 17));
         assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 3, null, 17));
         assertEquals(List.of(), verseBrowserService.findVerseRange("KJV", "John", 3, 16, null));
         assertEquals(List.of(
@@ -163,6 +168,19 @@ class VerseBrowserServiceTest {
     }
 
     @Test
+    void databaseBackedQueriesReturnEmptyListsForNonPositiveChapters() throws Exception {
+        Path databasePath = Files.createTempFile("verse-browser-service-invalid-chapter", ".db");
+        populateVersesTable(databasePath);
+
+        VerseBrowserService verseBrowserService = new VerseBrowserService(jdbcTemplate(databasePath), databasePath);
+
+        assertEquals(List.of(), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", 0));
+        assertEquals(List.of(), verseBrowserService.getVerses("Revideált Károli", "1. Mózes", -1));
+        assertEquals(List.of(), verseBrowserService.findVerses("Revideált Károli", "1. Mózes", 0, null));
+        assertEquals(List.of(), verseBrowserService.findVerseRange("Revideált Károli", "1. Mózes", 0, 1, 2));
+    }
+
+    @Test
     void databaseBackedQueriesReturnEmptyListsWhenVersesTableIsMissingInNestedCause() throws Exception {
         Path databasePath = Files.createTempFile("verse-browser-service-nested-missing-table", ".db");
         JdbcTemplate jdbcTemplate = new ThrowingJdbcTemplate(new RuntimeException(
@@ -221,6 +239,7 @@ class VerseBrowserServiceTest {
         }
     }
 
+    @NullMarked
     private static final class ThrowingJdbcTemplate extends JdbcTemplate {
 
         private final RuntimeException exception;
@@ -235,6 +254,7 @@ class VerseBrowserServiceTest {
         }
     }
 
+    @NullMarked
     private static final class CountingJdbcTemplate extends JdbcTemplate {
 
         private final JdbcTemplate delegate;

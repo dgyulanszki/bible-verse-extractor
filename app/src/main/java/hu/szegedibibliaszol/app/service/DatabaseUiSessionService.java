@@ -2,7 +2,6 @@ package hu.szegedibibliaszol.app.service;
 
 import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -34,7 +33,7 @@ public class DatabaseUiSessionService implements UiSessionService {
 
     @Override
     public Optional<AppSessionSnapshot> loadSession() {
-        if (!databaseFileExists()) {
+        if (!SqliteDatabaseSupport.databaseFileExists(databasePath)) {
             return Optional.empty();
         }
 
@@ -69,7 +68,7 @@ public class DatabaseUiSessionService implements UiSessionService {
                             .toList()
             ));
         } catch (RuntimeException ex) {
-            if (isMissingSessionTable(ex)) {
+            if (SqliteDatabaseSupport.hasMissingTable(ex, SESSION_TABLE_NAME)) {
                 return Optional.empty();
             }
             throw new IllegalStateException("Could not load the saved UI session from SQLite.", ex);
@@ -125,23 +124,6 @@ public class DatabaseUiSessionService implements UiSessionService {
         );
     }
 
-    private boolean databaseFileExists() {
-        return databasePath != null && Files.isRegularFile(databasePath);
-    }
-
-    private boolean isMissingSessionTable(Throwable throwable) {
-        String message = throwable.getMessage();
-        if (message != null && message.contains("no such table: " + SESSION_TABLE_NAME)) {
-            return true;
-        }
-
-        Throwable cause = throwable.getCause();
-        if (cause == null) {
-            return false;
-        }
-        return isMissingSessionTable(cause);
-    }
-
     private Integer getNullableInteger(Object value) {
         if (value == null) {
             return null;
@@ -159,4 +141,3 @@ public class DatabaseUiSessionService implements UiSessionService {
     ) {
     }
 }
-

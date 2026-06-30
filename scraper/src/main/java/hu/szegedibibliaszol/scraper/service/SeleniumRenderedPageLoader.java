@@ -36,8 +36,12 @@ final class SeleniumRenderedPageLoader implements DynamicPageLoader {
     }
 
     static List<BrowserDriverCandidate> defaultBrowserCandidates() {
+        return defaultBrowserCandidates(() -> new ChromeDriver(chromeOptions()));
+    }
+
+    static List<BrowserDriverCandidate> defaultBrowserCandidates(Supplier<WebDriver> chromeDriverFactory) {
         return List.of(
-                new BrowserDriverCandidate("Google Chrome", () -> new ChromeDriver(chromeOptions()))
+                new BrowserDriverCandidate("Google Chrome", chromeDriverFactory)
         );
     }
 

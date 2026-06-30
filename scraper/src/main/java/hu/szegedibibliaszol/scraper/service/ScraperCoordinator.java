@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,10 +75,7 @@ public class ScraperCoordinator {
     }
 
     private void persistCollectedVersesOnFailure(List<VerseRecord> collectedVerses, RuntimeException failure) {
-        List<VerseRecord> versesToPersist = new ArrayList<>(collectedVerses);
-        if (failure instanceof PartialScrapeException partialScrapeException) {
-            versesToPersist.addAll(partialScrapeException.partialVerses());
-        }
+        List<VerseRecord> versesToPersist = versesToPersist(collectedVerses, failure);
 
         if (versesToPersist.isEmpty()) {
             log.warn("Scraper run failed before any verses were collected, so no fallback export was written.");
@@ -102,70 +100,88 @@ public class ScraperCoordinator {
     }
 
     private List<AbstractStaticSiteScraper> selectedStaticSiteScrapers() {
-        Map<String, AbstractStaticSiteScraper> scrapersById = new LinkedHashMap<>();
-        for (AbstractStaticSiteScraper staticSiteScraper : staticSiteScrapers) {
-            scrapersById.put(staticSiteScraper.id(), staticSiteScraper);
-        }
-
-        if (config.staticTranslations().isEmpty()) {
-            return List.copyOf(staticSiteScrapers);
-        }
-
-        List<AbstractStaticSiteScraper> selectedScrapers = new ArrayList<>();
-        for (String configuredTranslationId : config.staticTranslations()) {
-            String normalizedTranslationId = configuredTranslationId.toLowerCase(Locale.ROOT);
-            if ("all".equals(normalizedTranslationId)) {
-                return List.copyOf(staticSiteScrapers);
-            }
-
-            AbstractStaticSiteScraper staticSiteScraper = scrapersById.get(normalizedTranslationId);
-            if (staticSiteScraper == null) {
-                throw new IllegalStateException(
-                        "Unknown static translation id: " + configuredTranslationId + ". Available ids: " + scrapersById.keySet()
-                );
-            }
-            selectedScrapers.add(staticSiteScraper);
-        }
-
-        return List.copyOf(selectedScrapers);
+        return selectedScrapers(
+                staticSiteScrapers,
+                config.staticTranslations(),
+                AbstractStaticSiteScraper::id,
+                "static"
+        );
     }
 
     private List<AbstractDynamicSiteScraper> selectedDynamicSiteScrapers() {
-        Map<String, AbstractDynamicSiteScraper> scrapersById = new LinkedHashMap<>();
-        for (AbstractDynamicSiteScraper dynamicSiteScraper : dynamicSiteScrapers) {
-            scrapersById.put(dynamicSiteScraper.id(), dynamicSiteScraper);
-        }
-
-        if (config.dynamicTranslations().isEmpty()) {
-            return List.copyOf(dynamicSiteScrapers);
-        }
-
-        List<AbstractDynamicSiteScraper> selectedScrapers = new ArrayList<>();
-        for (String configuredTranslationId : config.dynamicTranslations()) {
-            String normalizedTranslationId = configuredTranslationId.toLowerCase(Locale.ROOT);
-            if ("all".equals(normalizedTranslationId)) {
-                return List.copyOf(dynamicSiteScrapers);
-            }
-
-            AbstractDynamicSiteScraper dynamicSiteScraper = scrapersById.get(normalizedTranslationId);
-            if (dynamicSiteScraper == null) {
-                throw new IllegalStateException(
-                        "Unknown dynamic translation id: " + configuredTranslationId + ". Available ids: " + scrapersById.keySet()
-                );
-            }
-            selectedScrapers.add(dynamicSiteScraper);
-        }
-
-        return List.copyOf(selectedScrapers);
+        return selectedScrapers(
+                dynamicSiteScrapers,
+                config.dynamicTranslations(),
+                AbstractDynamicSiteScraper::id,
+                "dynamic"
+        );
     }
 
     private void validateDynamicStartUrlUsage(List<AbstractDynamicSiteScraper> selectedDynamicSiteScrapers) {
-        if (config.dynamicStartUrl().isPresent() && selectedDynamicSiteScrapers.size() > 1) {
+        if (config.dynamicStartUrl().isPresent() && selectedDynamicSiteScrapers.size() != 1) {
             throw new IllegalStateException(
                     "scraper.dynamicStartUrl can only be used when exactly one dynamic scraper is selected. Selected ids: "
                             + selectedDynamicSiteScrapers.stream().map(AbstractDynamicSiteScraper::id).toList()
             );
         }
+    }
+
+    private List<VerseRecord> versesToPersist(List<VerseRecord> collectedVerses, RuntimeException failure) {
+        if (!(failure instanceof PartialScrapeException partialScrapeException)) {
+            return List.copyOf(collectedVerses);
+        }
+
+        List<VerseRecord> partialVerses = partialScrapeException.partialVerses();
+        if (collectedVerses.isEmpty()) {
+            return List.copyOf(partialVerses);
+        }
+        if (partialVerses.isEmpty()) {
+            return List.copyOf(collectedVerses);
+        }
+
+        List<VerseRecord> mergedVerses = new ArrayList<>(collectedVerses.size() + partialVerses.size());
+        mergedVerses.addAll(collectedVerses);
+        mergedVerses.addAll(partialVerses);
+        return List.copyOf(mergedVerses);
+    }
+
+    private <T> List<T> selectedScrapers(
+            List<T> availableScrapers,
+            List<String> configuredTranslationIds,
+            Function<T, String> idExtractor,
+            String scraperType
+    ) {
+        if (configuredTranslationIds.isEmpty()) {
+            return List.copyOf(availableScrapers);
+        }
+
+        Map<String, T> scrapersById = new LinkedHashMap<>();
+        for (T availableScraper : availableScrapers) {
+            scrapersById.put(normalizeTranslationId(idExtractor.apply(availableScraper)), availableScraper);
+        }
+
+        List<T> selectedScrapers = new ArrayList<>();
+        for (String configuredTranslationId : configuredTranslationIds) {
+            String normalizedTranslationId = normalizeTranslationId(configuredTranslationId);
+            if ("all".equals(normalizedTranslationId)) {
+                return List.copyOf(availableScrapers);
+            }
+
+            T selectedScraper = scrapersById.get(normalizedTranslationId);
+            if (selectedScraper == null) {
+                throw new IllegalStateException(
+                        "Unknown " + scraperType + " translation id: " + configuredTranslationId
+                                + ". Available ids: " + scrapersById.keySet()
+                );
+            }
+            selectedScrapers.add(selectedScraper);
+        }
+
+        return List.copyOf(selectedScrapers);
+    }
+
+    private String normalizeTranslationId(String translationId) {
+        return translationId.toLowerCase(Locale.ROOT);
     }
 }
 

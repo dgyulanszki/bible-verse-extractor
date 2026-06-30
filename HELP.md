@@ -1,7 +1,8 @@
 # Read Me First
 The following was discovered as part of building this project:
 
-* The original package name 'hu.szegedibibliaszol.bible-verse-extractor' is invalid and this project uses 'hu.szegedibibliaszol.bible_verse_extractor' instead.
+* The current codebase is organized into two module-level package roots: `hu.szegedibibliaszol.app` and `hu.szegedibibliaszol.scraper`.
+* Older generated package-name notes no longer apply to the current module layout.
 
 # Getting Started
 

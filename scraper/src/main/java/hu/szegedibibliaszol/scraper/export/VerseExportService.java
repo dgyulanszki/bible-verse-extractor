@@ -8,37 +8,61 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
+import java.util.Objects;
 
 public class VerseExportService {
 
     public void exportToSqlite(Path databasePath, List<VerseRecord> verses) {
+        Objects.requireNonNull(databasePath, "databasePath must not be null");
+        Objects.requireNonNull(verses, "verses must not be null");
+
         try {
             createParentDirectories(databasePath.getParent());
         } catch (IOException ex) {
             throw new IllegalStateException("Could not create export directory for SQLite database.", ex);
         }
 
-        List<VerseRecord> uniqueVerses = verses.stream().distinct().toList();
         String jdbcUrl = "jdbc:sqlite:" + databasePath;
         try (Connection connection = openConnection(jdbcUrl)) {
-            connection.createStatement().execute(createTableSql());
-            connection.createStatement().execute(removeDuplicateRowsSql());
-            connection.createStatement().execute(createUniqueIndexSql());
-
-            try (PreparedStatement statement = connection.prepareStatement(createInsertSql())) {
-                for (VerseRecord verse : uniqueVerses) {
-                    statement.setString(1, verse.translation());
-                    statement.setString(2, verse.book());
-                    statement.setInt(3, verse.chapter());
-                    statement.setInt(4, verse.verse());
-                    statement.setString(5, verse.text());
-                    statement.addBatch();
+            connection.setAutoCommit(false);
+            try {
+                try (Statement createTableStatement = connection.createStatement();
+                     Statement removeDuplicateRowsStatement = connection.createStatement();
+                     Statement createUniqueIndexStatement = connection.createStatement()) {
+                    createTableStatement.execute(createTableSql());
+                    removeDuplicateRowsStatement.execute(removeDuplicateRowsSql());
+                    createUniqueIndexStatement.execute(createUniqueIndexSql());
                 }
-                statement.executeBatch();
+
+                try (PreparedStatement statement = connection.prepareStatement(createInsertSql())) {
+                    for (VerseRecord verse : verses) {
+                        Objects.requireNonNull(verse, "verses must not contain null entries");
+                        statement.setString(1, verse.translation());
+                        statement.setString(2, verse.book());
+                        statement.setInt(3, verse.chapter());
+                        statement.setInt(4, verse.verse());
+                        statement.setString(5, verse.text());
+                        statement.addBatch();
+                    }
+                    statement.executeBatch();
+                }
+                connection.commit();
+            } catch (RuntimeException | SQLException ex) {
+                rollbackQuietly(connection, ex);
+                throw ex;
             }
         } catch (SQLException ex) {
             throw new IllegalStateException("Could not export collected verses to SQLite.", ex);
+        }
+    }
+
+    protected void rollbackQuietly(Connection connection, Throwable originalFailure) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackFailure) {
+            originalFailure.addSuppressed(rollbackFailure);
         }
     }
 

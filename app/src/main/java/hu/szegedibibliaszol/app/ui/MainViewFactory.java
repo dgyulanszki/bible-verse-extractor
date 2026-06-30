@@ -57,6 +57,8 @@ public class MainViewFactory {
     private static final String PALE_BLUE = "#EAF2FB";
     private static final String PANEL_WHITE = "#FFFFFF";
     private static final String RANGE_RESET_BUTTON_TEXT = "↺";
+    private static final String DEFAULT_BUTTON_STYLE = "-fx-font-weight: bold; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: ";
+    private static final String ROUND_BUTTON_STYLE = "-fx-font-weight: bold; -fx-background-radius: 999; -fx-border-radius: 999; -fx-border-color: ";
 
     private final VerseBrowserService verseBrowserService;
     private final UiSessionService uiSessionService;
@@ -407,18 +409,15 @@ public class MainViewFactory {
     }
 
     private String primaryButtonStyle() {
-        return "-fx-font-weight: bold; -fx-background-color: " + PANEL_WHITE + "; -fx-text-fill: " + DEEP_BLUE
-                + "; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: " + PANEL_WHITE + ";";
+        return DEFAULT_BUTTON_STYLE + PANEL_WHITE + "; -fx-background-color: " + PANEL_WHITE + "; -fx-text-fill: " + DEEP_BLUE + ";";
     }
 
     private String secondaryButtonStyle() {
-        return "-fx-font-weight: bold; -fx-background-color: transparent; -fx-text-fill: " + PANEL_WHITE
-                + "; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: " + PANEL_WHITE + ";";
+        return DEFAULT_BUTTON_STYLE + PANEL_WHITE + "; -fx-background-color: transparent; -fx-text-fill: " + PANEL_WHITE + ";";
     }
 
     private String helpButtonStyle() {
-        return "-fx-font-weight: bold; -fx-background-color: " + DEEP_BLUE + "; -fx-text-fill: " + PANEL_WHITE
-                + "; -fx-background-radius: 999; -fx-border-radius: 999; -fx-border-color: " + PANEL_WHITE + ";";
+        return ROUND_BUTTON_STYLE + PANEL_WHITE + "; -fx-background-color: " + DEEP_BLUE + "; -fx-text-fill: " + PANEL_WHITE + ";";
     }
 
     private String panelRowStyle() {
@@ -493,13 +492,8 @@ public class MainViewFactory {
                 applyNumericQuickSelection(comboBox, newText);
             }
         });
-        comboBox.getEditor().focusedProperty().addListener((_, _, focused) -> {
-            if (focused) {
-                comboBox.getEditor().selectAll();
-                return;
-            }
-            commitNumericEditorText(comboBox);
-        });
+        comboBox.getEditor().focusedProperty().addListener((_, oldFocused, focused) ->
+                handleNumericEditorFocusChange(comboBox, oldFocused, focused));
         comboBox.getEditor().setOnAction(_ -> commitNumericEditorText(comboBox));
     }
 
@@ -569,17 +563,24 @@ public class MainViewFactory {
         }
 
         AppSessionSnapshot sessionSnapshot = savedSession.get();
+        String savedTranslation = sessionSnapshot.translation();
+        if (savedTranslation == null || !translationBox.getItems().contains(savedTranslation)) {
+            applyTranslationSelection(null, rangeSelections, addRangeButton, statusLabel, refreshCopyState);
+            statusLabel.setText("A mentett fordítás már nem érhető el, ezért a munkamenet alaphelyzetből indult.");
+            return;
+        }
+
         int desiredRangeCount = Math.max(1, sessionSnapshot.ranges().size());
         rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, desiredRangeCount);
         suppressTranslationChangeHandling = true;
         try {
-            translationBox.setValue(sessionSnapshot.translation());
+            translationBox.setValue(savedTranslation);
         } finally {
             suppressTranslationChangeHandling = false;
         }
-        applyTranslationSelection(sessionSnapshot.translation(), rangeSelections, addRangeButton, statusLabel, refreshCopyState);
+        applyTranslationSelection(savedTranslation, rangeSelections, addRangeButton, statusLabel, refreshCopyState);
         for (int index = 0; index < sessionSnapshot.ranges().size(); index++) {
-            restoreRangeSelection(rangeSelections.get(index), sessionSnapshot.translation(), sessionSnapshot.ranges().get(index), refreshCopyState);
+            restoreRangeSelection(rangeSelections.get(index), savedTranslation, sessionSnapshot.ranges().get(index), refreshCopyState);
         }
         refreshCopyState.run();
         statusLabel.setText("Az előző munkamenet automatikusan betöltődött.");
@@ -654,26 +655,8 @@ public class MainViewFactory {
         Button removeButton = new Button("-");
         Button helpButton = createHelpButton("A szakaszsor súgójának megnyitása");
 
-        configurePlaceholderDisplay(bookBox, BOOK_PLACEHOLDER);
-        configureNumericQuickSelection(chapterBox, CHAPTER_PLACEHOLDER);
-        configureNumericQuickSelection(fromVerseBox, FROM_VERSE_PLACEHOLDER);
-        configureNumericQuickSelection(toVerseBox, TO_VERSE_PLACEHOLDER);
-        bindLabelTooltip(rangeLabel);
-        chapterSeparatorLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
-        verseRangeSeparatorLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
-        configureSelectionTooltip(bookBox, "Könyv kiválasztása ehhez a szakaszhoz.", "Kiválasztott könyv: ");
-        configureSelectionTooltip(chapterBox, "Fejezet kiválasztása ehhez a szakaszhoz.", "Kiválasztott fejezet: ");
-        configureSelectionTooltip(fromVerseBox, "Kezdő vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott kezdő vers: ");
-        configureSelectionTooltip(toVerseBox, "Záró vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott záró vers: ");
-        rangeLabel.setMinWidth(96);
-        rangeLabel.setPrefWidth(96);
-        rangeLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
-        resetButton.setStyle(secondaryButtonStyle());
-        resetButton.setTooltip(new Tooltip("A szakaszsor alaphelyzetbe állítása"));
-        removeButton.setStyle(secondaryButtonStyle());
-        removeButton.setTooltip(new Tooltip("A szakaszsor eltávolítása"));
-        helpButton.setStyle(helpButtonStyle());
-        helpButton.setOnAction(_ -> createRangeHelpAlert().showAndWait());
+        configureRangeSelectionInputs(bookBox, chapterBox, fromVerseBox, toVerseBox, rangeLabel, chapterSeparatorLabel, verseRangeSeparatorLabel);
+        configureRangeSelectionButtons(resetButton, removeButton, helpButton);
 
         RangeSelectionControls rangeSelection = new RangeSelectionControls(
                 new HBox(12, rangeLabel, bookBox, chapterBox, chapterSeparatorLabel, fromVerseBox, verseRangeSeparatorLabel, toVerseBox, resetButton, removeButton),
@@ -700,41 +683,58 @@ public class MainViewFactory {
                 activeTranslationBox == null ? null : activeTranslationBox.getValue(),
                 refreshCopyState
         ));
-
-        bookBox.valueProperty().addListener((_, oldValue, newValue) -> {
-            if (rangeSelection.suppressSelectionChangeHandling || Objects.equals(oldValue, newValue)) {
-                return;
-            }
-            if (shouldConfirmBookChange(oldValue, newValue, rangeSelection)
-                    && !showConfirmationDialog(
-                    "Könyv módosítása",
-                    "Biztosan módosítod a könyvet a(z) " + rangeSelection.displayIndex + ". szakaszban?",
-                    "A könyv módosítása törli az adott sor fejezet- és versválasztását."
-            )) {
-                restoreBookSelection(rangeSelection, oldValue);
-                return;
-            }
-            applyBookSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
-        });
-
-        chapterBox.valueProperty().addListener((_, _, newValue) -> {
-            if (!rangeSelection.suppressSelectionChangeHandling) {
-                applyChapterSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
-            }
-        });
-
-        fromVerseBox.valueProperty().addListener((_, _, _) -> {
-            if (!rangeSelection.suppressSelectionChangeHandling) {
-                updateVerseRangeBoxes(rangeSelection, refreshCopyState);
-            }
-        });
-
-        toVerseBox.valueProperty().addListener((_, _, _) -> {
-            if (!rangeSelection.suppressSelectionChangeHandling) {
-                updateVerseRangeBoxes(rangeSelection, refreshCopyState);
-            }
-        });
+        configureRangeSelectionListeners(rangeSelection, refreshCopyState);
         return rangeSelection;
+    }
+
+    private void configureRangeSelectionInputs(
+            ComboBox<String> bookBox,
+            ComboBox<Integer> chapterBox,
+            ComboBox<Integer> fromVerseBox,
+            ComboBox<Integer> toVerseBox,
+            Label rangeLabel,
+            Label chapterSeparatorLabel,
+            Label verseRangeSeparatorLabel
+    ) {
+        configurePlaceholderDisplay(bookBox, BOOK_PLACEHOLDER);
+        configureNumericQuickSelection(chapterBox, CHAPTER_PLACEHOLDER);
+        configureNumericQuickSelection(fromVerseBox, FROM_VERSE_PLACEHOLDER);
+        configureNumericQuickSelection(toVerseBox, TO_VERSE_PLACEHOLDER);
+        bindLabelTooltip(rangeLabel);
+        chapterSeparatorLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        verseRangeSeparatorLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        configureSelectionTooltip(bookBox, "Könyv kiválasztása ehhez a szakaszhoz.", "Kiválasztott könyv: ");
+        configureSelectionTooltip(chapterBox, "Fejezet kiválasztása ehhez a szakaszhoz.", "Kiválasztott fejezet: ");
+        configureSelectionTooltip(fromVerseBox, "Kezdő vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott kezdő vers: ");
+        configureSelectionTooltip(toVerseBox, "Záró vers kiválasztása ehhez a szakaszhoz.", "Kiválasztott záró vers: ");
+        rangeLabel.setMinWidth(96);
+        rangeLabel.setPrefWidth(96);
+        rangeLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+    }
+
+    private void configureRangeSelectionButtons(Button resetButton, Button removeButton, Button helpButton) {
+        resetButton.setStyle(secondaryButtonStyle());
+        resetButton.setTooltip(new Tooltip("A szakaszsor alaphelyzetbe állítása"));
+        removeButton.setStyle(secondaryButtonStyle());
+        removeButton.setTooltip(new Tooltip("A szakaszsor eltávolítása"));
+        helpButton.setStyle(helpButtonStyle());
+        helpButton.setOnAction(_ -> createRangeHelpAlert().showAndWait());
+    }
+
+    private void configureRangeSelectionListeners(RangeSelectionControls rangeSelection, Runnable refreshCopyState) {
+        rangeSelection.bookBox.valueProperty().addListener((_, oldValue, newValue) -> handleBookSelectionChange(
+                rangeSelection,
+                oldValue,
+                newValue,
+                refreshCopyState
+        ));
+        rangeSelection.chapterBox.valueProperty().addListener((_, _, newValue) -> handleChapterSelectionChange(
+                rangeSelection,
+                newValue,
+                refreshCopyState
+        ));
+        rangeSelection.fromVerseBox.valueProperty().addListener((_, _, _) -> handleVerseSelectionChange(rangeSelection, refreshCopyState));
+        rangeSelection.toVerseBox.valueProperty().addListener((_, _, _) -> handleVerseSelectionChange(rangeSelection, refreshCopyState));
     }
 
     private void resetRangeSelection(RangeSelectionControls rangeSelection, String translation, Runnable refreshCopyState) {
@@ -825,6 +825,45 @@ public class MainViewFactory {
                 rangeSelection.bookBox.getValue(),
                 chapter
         )));
+        updateVerseRangeBoxes(rangeSelection, refreshCopyState);
+    }
+
+    private void handleBookSelectionChange(
+            RangeSelectionControls rangeSelection,
+            String oldValue,
+            String newValue,
+            Runnable refreshCopyState
+    ) {
+        if (rangeSelection.suppressSelectionChangeHandling || Objects.equals(oldValue, newValue)) {
+            return;
+        }
+        if (shouldConfirmBookChange(oldValue, newValue, rangeSelection)
+                && !showConfirmationDialog(
+                "Könyv módosítása",
+                "Biztosan módosítod a könyvet a(z) " + rangeSelection.displayIndex + ". szakaszban?",
+                "A könyv módosítása törli az adott sor fejezet- és versválasztását."
+        )) {
+            restoreBookSelection(rangeSelection, oldValue);
+            return;
+        }
+        applyBookSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
+    }
+
+    private void handleChapterSelectionChange(
+            RangeSelectionControls rangeSelection,
+            Integer newValue,
+            Runnable refreshCopyState
+    ) {
+        if (rangeSelection.suppressSelectionChangeHandling) {
+            return;
+        }
+        applyChapterSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
+    }
+
+    private void handleVerseSelectionChange(RangeSelectionControls rangeSelection, Runnable refreshCopyState) {
+        if (rangeSelection.suppressSelectionChangeHandling) {
+            return;
+        }
         updateVerseRangeBoxes(rangeSelection, refreshCopyState);
     }
 
@@ -1011,7 +1050,6 @@ public class MainViewFactory {
         return valuesWithDefault;
     }
 
-
     private <T> void updateEditorText(ComboBox<T> comboBox, T value) {
         runWithEditorUpdate(comboBox, () -> comboBox.getEditor().setText(value == null ? "" : String.valueOf(value)));
     }
@@ -1066,6 +1104,16 @@ public class MainViewFactory {
         }
 
         updateEditorText(comboBox, comboBox.getValue());
+    }
+
+    private void handleNumericEditorFocusChange(ComboBox<Integer> comboBox, Boolean oldFocused, Boolean focused) {
+        if (Boolean.TRUE.equals(focused)) {
+            comboBox.getEditor().selectAll();
+            return;
+        }
+        if (Boolean.TRUE.equals(oldFocused)) {
+            commitNumericEditorText(comboBox);
+        }
     }
 
     private void clearNumericSelectionPreservingEditorText(ComboBox<Integer> comboBox, String editorText) {
@@ -1127,10 +1175,6 @@ public class MainViewFactory {
         protected void updateItem(T item, boolean empty) {
             super.updateItem(item, empty);
             setText(empty || item == null ? placeholderText : String.valueOf(item));
-        }
-
-        void applyItem(T item, boolean empty) {
-            updateItem(item, empty);
         }
     }
 

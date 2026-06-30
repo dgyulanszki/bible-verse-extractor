@@ -1,7 +1,6 @@
 package hu.szegedibibliaszol.app.service;
 
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -256,7 +255,7 @@ public class VerseBrowserService {
         } catch (RuntimeException ex) {
             // A missing or not-yet-generated SQLite file should not stop the UI from opening.
             // We return empty data for this case and only fail on unexpected database errors.
-            if (isMissingVersesTable(ex)) {
+            if (SqliteDatabaseSupport.hasMissingTable(ex, VERSES_TABLE_NAME)) {
                 return List.of();
             }
             throw new IllegalStateException("Could not read verses from SQLite database.", ex);
@@ -264,33 +263,19 @@ public class VerseBrowserService {
     }
 
     private boolean databaseFileExists() {
-        return databasePath != null && Files.isRegularFile(databasePath);
-    }
-
-    private boolean isMissingVersesTable(Throwable throwable) {
-        String message = throwable.getMessage();
-        if (message != null && message.contains("no such table: " + VERSES_TABLE_NAME)) {
-            return true;
-        }
-
-        Throwable cause = throwable.getCause();
-        if (cause == null) {
-            return false;
-        }
-
-        return isMissingVersesTable(cause);
+        return SqliteDatabaseSupport.databaseFileExists(databasePath);
     }
 
     private List<String> queryStrings(String sql, Object... args) {
-        return List.copyOf(jdbcTemplate.query(sql, (resultSet, _) -> resultSet.getString(1), args));
+        return jdbcTemplate.query(sql, (resultSet, _) -> resultSet.getString(1), args);
     }
 
     private List<Integer> queryIntegers(String sql, Object... args) {
-        return List.copyOf(jdbcTemplate.query(sql, (resultSet, _) -> resultSet.getInt(1), args));
+        return jdbcTemplate.query(sql, (resultSet, _) -> resultSet.getInt(1), args);
     }
 
     private List<VerseRow> queryVerseRows(String sql, Object... args) {
-        return List.copyOf(jdbcTemplate.query(sql, (resultSet, _) -> toVerseRow(resultSet), args));
+        return jdbcTemplate.query(sql, (resultSet, _) -> toVerseRow(resultSet), args);
     }
 
     private VerseRow toVerseRow(java.sql.ResultSet resultSet) throws java.sql.SQLException {

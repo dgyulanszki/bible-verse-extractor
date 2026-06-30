@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 final class BookNameCanonicalizer {
 
@@ -26,6 +27,9 @@ final class BookNameCanonicalizer {
     }
 
     static String canonicalBookName(String book) {
+        if (book == null) {
+            return null;
+        }
         return CANONICAL_BOOK_NAMES_BY_KEY.getOrDefault(normalizeBookNameKey(book), book);
     }
 
@@ -34,7 +38,9 @@ final class BookNameCanonicalizer {
     }
 
     static String normalizeBookNameKey(String book) {
-        return book.toLowerCase(Locale.ROOT).replaceAll("[\\s.]", "");
+        return Objects.requireNonNull(book, "book must not be null")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s.]", "");
     }
 
     private static Map<String, String> loadCanonicalBookNamesByKey() {
@@ -119,8 +125,3 @@ final class BookNameCanonicalizer {
         return List.of(line.split("\\t", -1));
     }
 }
-
-
-
-
-

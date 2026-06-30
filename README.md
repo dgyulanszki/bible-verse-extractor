@@ -1,6 +1,6 @@
 # Bible Verse Tool
 
-Multi-module Maven project generated from `PROJECT_SETUP.md`.
+Multi-module Maven project for scraping Bible verses into SQLite and browsing/copying them from a desktop app.
 
 ## Modules
 
@@ -18,6 +18,7 @@ Desktop application starter.
 - **SQLite** datasource configuration
 - Starter UI with translation, book, chapter, and verse selectors
 - Table view, help dialog, and status area for user-friendly diagnostics
+- The current Maven setup uses Windows JavaFX artifacts (`win` classifiers), so the `app` module is intended to build and run on Windows unless you switch classifiers or add OS-specific Maven profiles
 
 ## Build
 
@@ -99,6 +100,8 @@ Resume EFO from a later chapter, for example Dániel 12:
 ```powershell
 .\mvnw -pl app spring-boot:run
 ```
+
+The current `app` Maven build is Windows-targeted because `app/pom.xml` depends on JavaFX artifacts with the `win` classifier.
 
 On first start, new users can click the `Útmutató` button in the top-right area of the app for a short quick-start guide.
 

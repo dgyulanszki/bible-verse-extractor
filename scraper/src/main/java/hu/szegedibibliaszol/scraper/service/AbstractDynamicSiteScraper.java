@@ -23,6 +23,7 @@ public abstract class AbstractDynamicSiteScraper {
     private static final Logger log = LoggerFactory.getLogger(AbstractDynamicSiteScraper.class);
     private static final Duration DYNAMIC_PAGE_LOAD_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration DYNAMIC_RENDER_TIMEOUT = Duration.ofSeconds(45);
+    private static final int DYNAMIC_PROGRESS_LOG_INTERVAL_CHAPTERS = 25;
     private static final int DEFAULT_DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS = 25;
     private static final String DYNAMIC_BROWSER_RESTART_EVERY_CHAPTERS_PROPERTY =
             "scraper.dynamicBrowserRestartEveryChapters";
@@ -57,7 +58,8 @@ public abstract class AbstractDynamicSiteScraper {
                 ChapterPage parsedChapter = parseChapterPage(chapterPage, currentChapterUrl);
                 verses.addAll(parsedChapter.verses());
                 processedChapterCount++;
-                if (visitedChapterUrls.size() == 1 || visitedChapterUrls.size() % 25 == 0) {
+                if (visitedChapterUrls.size() == 1
+                        || visitedChapterUrls.size() % DYNAMIC_PROGRESS_LOG_INTERVAL_CHAPTERS == 0) {
                     log.info(
                             "Dynamic scrape of '{}' has reached {} chapter(s); current page: {}",
                             translation(),
@@ -184,7 +186,7 @@ public abstract class AbstractDynamicSiteScraper {
 
     protected void ensureTranslationSelected(Document chapterPage, String currentChapterUrl) {
         for (Element versionButtonLabel : chapterPage.select("button div")) {
-            if (translationButtonText().equals(normalizeText(versionButtonLabel.text()))) {
+            if (translationButtonText().equals(ScraperTextSupport.normalizeText(versionButtonLabel.text()))) {
                 return;
             }
         }
@@ -200,7 +202,7 @@ public abstract class AbstractDynamicSiteScraper {
             throw new IllegalStateException("Could not find chapter heading for " + currentChapterUrl);
         }
 
-        String bookName = normalizeText(heading.text()).replaceFirst("\\s+\\d+$", "");
+        String bookName = ScraperTextSupport.normalizeText(heading.text()).replaceFirst("\\s+\\d+$", "");
         if (bookName.isBlank()) {
             throw new IllegalStateException("Could not determine book name from heading for " + currentChapterUrl);
         }
@@ -244,7 +246,7 @@ public abstract class AbstractDynamicSiteScraper {
                     bookName,
                     reference.chapter(),
                     reference.verse(),
-                    normalizeText(verseEntry.getValue().toString())
+                    ScraperTextSupport.normalizeText(verseEntry.getValue().toString())
             ));
         }
         return List.copyOf(verses);
@@ -272,19 +274,19 @@ public abstract class AbstractDynamicSiteScraper {
                 continue;
             }
 
-            String textPart = normalizeText(child.text());
+            String textPart = ScraperTextSupport.normalizeText(child.text());
             if (!textPart.isBlank()) {
                 textParts.add(textPart);
             }
         }
 
-        return normalizeText(String.join(" ", textParts));
+        return ScraperTextSupport.normalizeText(String.join(" ", textParts));
     }
 
     protected String extractNextChapterUrl(Document chapterPage) {
         for (Element link : chapterPage.select("a[href]")) {
             for (Element title : link.select("title")) {
-                if ("Next Chapter".equals(normalizeText(title.text()))) {
+                if ("Next Chapter".equals(ScraperTextSupport.normalizeText(title.text()))) {
                     return link.absUrl("href");
                 }
             }
@@ -301,9 +303,6 @@ public abstract class AbstractDynamicSiteScraper {
         return false;
     }
 
-    protected String normalizeText(String text) {
-        return text.replace('\u00A0', ' ').trim().replaceAll("\\s+", " ");
-    }
 
     protected record ChapterPage(List<VerseRecord> verses, String nextChapterUrl) {
     }

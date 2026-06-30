@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Objects;
 
 @Entity
 @Table(name = "verses")
@@ -34,11 +35,17 @@ public class Verse {
     }
 
     public Verse(String translation, String book, int chapter, int verse, String text) {
-        this.translation = translation;
-        this.book = book;
+        this.translation = Objects.requireNonNull(translation, "translation must not be null");
+        this.book = Objects.requireNonNull(book, "book must not be null");
+        if (chapter <= 0) {
+            throw new IllegalArgumentException("chapter must be greater than 0");
+        }
+        if (verse <= 0) {
+            throw new IllegalArgumentException("verse must be greater than 0");
+        }
         this.chapter = chapter;
         this.verse = verse;
-        this.text = text;
+        this.text = Objects.requireNonNull(text, "text must not be null");
     }
 
     public Long getId() {

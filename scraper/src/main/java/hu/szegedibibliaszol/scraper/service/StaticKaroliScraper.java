@@ -69,7 +69,7 @@ public class StaticKaroliScraper extends AbstractStaticSiteScraper {
 
     @Override
     protected int extractVerseNumber(Element verseNumberElement, String bookName, int chapterNumber) {
-        String verseNumberText = normalizeText(verseNumberElement.text());
+        String verseNumberText = ScraperTextSupport.normalizeText(verseNumberElement.text());
         if (verseNumberText.endsWith(".")) {
             verseNumberText = verseNumberText.substring(0, verseNumberText.length() - 1);
         }

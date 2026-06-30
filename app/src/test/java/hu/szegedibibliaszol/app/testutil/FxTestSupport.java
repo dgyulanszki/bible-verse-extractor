@@ -57,6 +57,11 @@ public final class FxTestSupport {
         });
     }
 
+    public static void waitForFxEvents() {
+        runOnFxThread(() -> {
+        });
+    }
+
     private static void awaitLatch(CountDownLatch latch) {
         try {
             if (!latch.await(10, TimeUnit.SECONDS)) {

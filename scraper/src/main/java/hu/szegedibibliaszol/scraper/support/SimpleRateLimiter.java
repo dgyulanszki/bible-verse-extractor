@@ -22,5 +22,15 @@ public class SimpleRateLimiter {
         }
         lastRequestAt = System.currentTimeMillis();
     }
+
+    @SuppressWarnings("unused")
+    void setLastRequestAt(long lastRequestAt) {
+        this.lastRequestAt = lastRequestAt;
+    }
+
+    @SuppressWarnings("unused")
+    long lastRequestAt() {
+        return lastRequestAt;
+    }
 }
 
