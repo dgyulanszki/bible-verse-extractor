@@ -56,11 +56,23 @@ public class JavaFxApplication extends Application {
     }
 
     ConfigurableApplicationContext createApplicationContext() {
-        Path defaultDatabasePath = resolveDefaultDatabasePath(Path.of(System.getProperty("user.dir")));
+        String configuredDatabasePath = System.getProperty("app.database.path");
+        if (configuredDatabasePath == null || configuredDatabasePath.isBlank()) {
+            configuredDatabasePath = System.getenv("BIBLE_VERSE_DB_PATH");
+        }
+        Path defaultDatabasePath = resolveStartupDatabasePath(configuredDatabasePath, Path.of(System.getProperty("user.dir")));
         return new SpringApplicationBuilder(BibleVerseAppApplication.class)
                 .headless(false)
+                .logStartupInfo(false)
                 .properties(Map.of("app.database.path", defaultDatabasePath.toString()))
                 .run();
+    }
+
+    static Path resolveStartupDatabasePath(String configuredDatabasePath, Path searchStart) {
+        if (configuredDatabasePath != null && !configuredDatabasePath.isBlank()) {
+            return Path.of(configuredDatabasePath);
+        }
+        return resolveDefaultDatabasePath(searchStart);
     }
 
     static Path resolveDefaultDatabasePath(Path searchStart) {

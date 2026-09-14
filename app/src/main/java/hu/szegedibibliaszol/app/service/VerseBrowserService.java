@@ -73,6 +73,7 @@ public class VerseBrowserService {
     private final Map<String, List<String>> cachedBooksByTranslation = new ConcurrentHashMap<>();
     private final Map<BookSelection, List<Integer>> cachedChaptersByBook = new ConcurrentHashMap<>();
     private final Map<ChapterSelection, List<Integer>> cachedVersesByChapter = new ConcurrentHashMap<>();
+    private final Map<VerseRangeSelection, List<VerseRow>> cachedVerseRanges = new ConcurrentHashMap<>();
 
     public VerseBrowserService() {
         this(null, null, List.of(), false);
@@ -203,13 +204,17 @@ public class VerseBrowserService {
         }
 
         if (databaseBacked) {
-            return queryOrEmpty(() -> queryVerseRows(
-                    FIND_VERSE_ROWS_BY_RANGE_SQL,
-                    translation,
-                    book,
-                    chapter,
-                    fromVerse,
-                    toVerse
+            VerseRangeSelection selection = new VerseRangeSelection(translation, book, chapter, fromVerse, toVerse);
+            return queryOrEmpty(() -> cachedVerseRanges.computeIfAbsent(
+                    selection,
+                    value -> queryVerseRows(
+                            FIND_VERSE_ROWS_BY_RANGE_SQL,
+                            value.translation(),
+                            value.book(),
+                            value.chapter(),
+                            value.fromVerse(),
+                            value.toVerse()
+                    )
             ));
         }
 
@@ -292,5 +297,14 @@ public class VerseBrowserService {
     }
 
     private record ChapterSelection(String translation, String book, Integer chapter) {
+    }
+
+    private record VerseRangeSelection(
+            String translation,
+            String book,
+            Integer chapter,
+            Integer fromVerse,
+            Integer toVerse
+    ) {
     }
 }

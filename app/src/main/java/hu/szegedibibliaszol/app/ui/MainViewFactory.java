@@ -32,6 +32,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +58,7 @@ public class MainViewFactory {
     private static final String PALE_BLUE = "#EAF2FB";
     private static final String PANEL_WHITE = "#FFFFFF";
     private static final String RANGE_RESET_BUTTON_TEXT = "↺";
+    private static final String RANGE_COPY_BUTTON_TEXT = "⧉";
     private static final String DEFAULT_BUTTON_STYLE = "-fx-font-weight: bold; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: ";
     private static final String ROUND_BUTTON_STYLE = "-fx-font-weight: bold; -fx-background-radius: 999; -fx-border-radius: 999; -fx-border-color: ";
 
@@ -64,6 +66,7 @@ public class MainViewFactory {
     private final UiSessionService uiSessionService;
 
     private ComboBox<String> activeTranslationBox;
+    private Label activeStatusLabel;
     private List<RangeSelectionControls> activeRangeSelections = List.of();
     private boolean suppressTranslationChangeHandling;
 
@@ -97,10 +100,12 @@ public class MainViewFactory {
         Button generalHelpButton = createHelpButton("Az általános súgó megnyitása");
         Label statusLabel = new Label(INITIAL_STATUS_MESSAGE);
         VBox rangeSelectionsBox = new VBox(10);
+        VBox versePreviewBox = new VBox(10);
         List<RangeSelectionControls> rangeSelections = new ArrayList<>();
         ScrollPane mainScrollPane = new ScrollPane();
 
         this.activeTranslationBox = translationBox;
+        this.activeStatusLabel = statusLabel;
         this.activeRangeSelections = rangeSelections;
 
         configurePlaceholderDisplay(translationBox, TRANSLATION_PLACEHOLDER);
@@ -127,8 +132,12 @@ public class MainViewFactory {
         statusLabel.setStyle("-fx-text-fill: " + PANEL_WHITE + "; -fx-font-weight: bold;");
         bindLabelTooltip(statusLabel);
 
-        Runnable refreshCopyState = () -> copyButton.setDisable(!isCopyReady(translationBox.getValue(), rangeSelections));
-        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState);
+        Runnable refreshSelectionState = () -> {
+            copyButton.setDisable(!isCopyReady(translationBox.getValue(), rangeSelections));
+            refreshRangeCopyButtons(translationBox.getValue(), rangeSelections);
+            refreshVersePreview(translationBox.getValue(), rangeSelections, versePreviewBox);
+        };
+        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState);
 
         translationBox.valueProperty().addListener((_, oldValue, newValue) -> {
             if (suppressTranslationChangeHandling || Objects.equals(oldValue, newValue)) {
@@ -143,7 +152,7 @@ public class MainViewFactory {
                 restoreTranslationSelection(translationBox, oldValue);
                 return;
             }
-            applyTranslationSelection(newValue, rangeSelections, addRangeButton, statusLabel, refreshCopyState);
+            applyTranslationSelection(newValue, rangeSelections, addRangeButton, statusLabel, refreshSelectionState);
         });
 
         translationHelpButton.setOnAction(_ -> createTranslationHelpAlert().showAndWait());
@@ -151,7 +160,7 @@ public class MainViewFactory {
         generalHelpButton.setOnAction(_ -> createGeneralHelpAlert().showAndWait());
 
         addRangeButton.setOnAction(_ -> {
-            RangeSelectionControls rangeSelection = addRangeSelection(rangeSelectionsBox, rangeSelections, refreshCopyState);
+            RangeSelectionControls rangeSelection = addRangeSelection(rangeSelectionsBox, rangeSelections, refreshSelectionState);
             if (translationBox.getValue() != null) {
                 rangeSelection.suppressSelectionChangeHandling = true;
                 try {
@@ -161,7 +170,7 @@ public class MainViewFactory {
                 }
             }
             refreshRangeSelectionPresentation(rangeSelections);
-            refreshCopyState.run();
+            refreshSelectionState.run();
             statusLabel.setText("Új szakasz hozzáadva. Válassz könyvet.");
             mainScrollPane.setVvalue(1.0);
         });
@@ -185,9 +194,7 @@ public class MainViewFactory {
                             rangeSelection.toVerseBox.getValue()
                     ))
                     .toList();
-            ClipboardContent clipboardContent = new ClipboardContent();
-            clipboardContent.putString(formatVerseRangesText(formattedRanges));
-            Clipboard.getSystemClipboard().setContent(clipboardContent);
+            copyTextToClipboard(formatVerseRangesText(formattedRanges));
             statusLabel.setText("A kijelölt szakaszok a vágólapra kerültek.");
         });
 
@@ -199,7 +206,7 @@ public class MainViewFactory {
                 suppressTranslationChangeHandling = false;
             }
             setComboBoxItems(translationBox, verseBrowserService.getTranslations());
-            rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState);
+            rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState);
             addRangeButton.setDisable(true);
             statusLabel.setText(INITIAL_STATUS_MESSAGE);
         });
@@ -246,7 +253,7 @@ public class MainViewFactory {
                 rangeSelectionsBox,
                 addRangeRow,
                 statusLabel,
-                createContentPanel(),
+                createContentPanel(versePreviewBox),
                 footerRow
         );
         mainContent.setPadding(new Insets(16));
@@ -264,8 +271,8 @@ public class MainViewFactory {
 
         HBox.setHgrow(translationBox, Priority.ALWAYS);
 
-        restoreSavedSession(translationBox, addRangeButton, rangeSelectionsBox, rangeSelections, statusLabel, refreshCopyState);
-        refreshCopyState.run();
+        restoreSavedSession(translationBox, addRangeButton, rangeSelectionsBox, rangeSelections, statusLabel, refreshSelectionState);
+        refreshSelectionState.run();
         return root;
     }
 
@@ -295,9 +302,10 @@ public class MainViewFactory {
                 6. Az Útmutató gomb új felhasználóknak rövid, lépésenkénti kezdési segítséget ad.
                 7. A Mentés gomb vagy a Ctrl+S billentyűparancs kézzel elmenti az aktuális munkamenetet.
                 8. A Másolás gomb vagy a Ctrl+C billentyűparancs az összes kész szakaszt egyetlen blokkba másolja.
-                9. Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
-                10. Ha egy felirat rövidítve látszik, vidd fölé az egeret: a teljes szöveg buboréksúgóban megjelenik.
-                11. Az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.
+                9. Minden kész szakaszsor saját Másolás gombot kap, így az adott igerészt külön is kimásolhatod.
+                10. Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
+                11. Ha egy felirat rövidítve látszik, vidd fölé az egeret: a teljes szöveg buboréksúgóban megjelenik.
+                12. Az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.
                 """;
     }
 
@@ -308,10 +316,11 @@ public class MainViewFactory {
                 2. Ha több szakasz kell, kattints a + gombra vagy nyomd meg a numerikus billentyűzet + gombját.
                 3. Minden szakaszsorban válassz könyvet, fejezetet, kezdő verset és záró verset.
                 4. Ha egy sort törölnél vagy újrakezdenél, használd a - vagy a ↺ gombot.
-                5. Ha elkészültél, a Másolás gombbal vagy a Ctrl+C billentyűparanccsal másold a szöveget a vágólapra.
-                6. A Mentés gombbal vagy a Ctrl+S billentyűparanccsal mentsd el a munkamenetet.
-                7. Az Alaphelyzet gombbal vagy a Ctrl+R billentyűparanccsal mindent lenullázhatsz.
-                8. Ha valamelyik felirat rövidítve látszik, vidd fölé az egeret a teljes buboréksúgóért.
+                5. Ha elkészültél, a Másolás gombbal vagy a Ctrl+C billentyűparanccsal másold a teljes szöveget a vágólapra.
+                6. Ha csak egy szakaszt másolnál, használd az adott szakaszsor saját Másolás gombját.
+                7. A Mentés gombbal vagy a Ctrl+S billentyűparanccsal mentsd el a munkamenetet.
+                8. Az Alaphelyzet gombbal vagy a Ctrl+R billentyűparanccsal mindent lenullázhatsz.
+                9. Ha valamelyik felirat rövidítve látszik, vidd fölé az egeret a teljes buboréksúgóért.
                 """;
     }
 
@@ -321,6 +330,7 @@ public class MainViewFactory {
                 - A + gomb vagy a numerikus billentyűzet + gombja új szakaszsort ad hozzá.
                 - A Mentés gomb vagy a Ctrl+S billentyűparancs kézzel elmenti az aktuális munkamenetet.
                 - A Másolás gomb vagy a Ctrl+C billentyűparancs az összes kész szakaszt a vágólapra másolja.
+                - Minden kész szakaszsor külön Másolás gombot kap az egyedi szakaszmásoláshoz.
                 - Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
                 - A fordítás módosítását a program megerősítteti, ha már van kitöltött alsó szintű választás.
                 """;
@@ -416,6 +426,11 @@ public class MainViewFactory {
         return DEFAULT_BUTTON_STYLE + PANEL_WHITE + "; -fx-background-color: transparent; -fx-text-fill: " + PANEL_WHITE + ";";
     }
 
+    private String iconButtonStyle() {
+        return DEFAULT_BUTTON_STYLE + PANEL_WHITE + "; -fx-background-color: " + PANEL_WHITE + "; -fx-text-fill: " + DEEP_BLUE
+                + "; -fx-alignment: center;";
+    }
+
     private String helpButtonStyle() {
         return ROUND_BUTTON_STYLE + PANEL_WHITE + "; -fx-background-color: " + DEEP_BLUE + "; -fx-text-fill: " + PANEL_WHITE + ";";
     }
@@ -497,20 +512,123 @@ public class MainViewFactory {
         comboBox.getEditor().setOnAction(_ -> commitNumericEditorText(comboBox));
     }
 
-    private VBox createContentPanel() {
+    private VBox createContentPanel(VBox versePreviewBox) {
         Label instructionsLabel = new Label(
-                "Ebben a nézetben nem jelenik meg verslista. A fenti vezérlőkkel állítsd össze a kívánt szakaszokat, majd kattints a Másolás gombra."
+                "Ebben a nézetben a kijelölt szakaszok versei jelennek meg. A fenti vezérlőkkel állítsd össze a kívánt szakaszokat, majd a teljes blokkot felül, az egyes szakaszokat pedig a saját sorukban másolhatod."
         );
         instructionsLabel.setWrapText(true);
         instructionsLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
         bindLabelTooltip(instructionsLabel);
 
-        VBox contentPanel = new VBox(instructionsLabel);
+        versePreviewBox.setFillWidth(true);
+
+        VBox contentPanel = new VBox(12, instructionsLabel, versePreviewBox);
         contentPanel.setPadding(new Insets(12));
         contentPanel.setStyle("-fx-background-color: " + PANEL_WHITE + "; -fx-background-radius: 12; -fx-border-color: "
                 + ACCENT_BLUE
                 + "; -fx-border-width: 0 0 0 6; -fx-border-radius: 12;");
         return contentPanel;
+    }
+
+    private void refreshVersePreview(
+            String translation,
+            List<RangeSelectionControls> rangeSelections,
+            VBox versePreviewBox
+    ) {
+        versePreviewBox.getChildren().clear();
+        if (translation == null) {
+            versePreviewBox.getChildren().add(createPreviewPlaceholderLabel(
+                    "Válassz fordítást, és a kijelölt versek itt jelennek meg szakaszonként csoportosítva."
+            ));
+            return;
+        }
+
+        boolean hasReadyRange = false;
+        for (RangeSelectionControls rangeSelection : rangeSelections) {
+            if (!isCompletedRangeSelection(rangeSelection)) {
+                continue;
+            }
+            hasReadyRange = true;
+            List<VerseRow> verseRows = verseBrowserService.findVerseRange(
+                    translation,
+                    rangeSelection.bookBox.getValue(),
+                    rangeSelection.chapterBox.getValue(),
+                    rangeSelection.fromVerseBox.getValue(),
+                    rangeSelection.toVerseBox.getValue()
+            );
+            if (verseRows.isEmpty()) {
+                continue;
+            }
+
+            Label rangeHeader = new Label(rangeHeaderText(rangeSelection));
+            rangeHeader.setStyle("-fx-font-weight: bold; -fx-text-fill: " + DEEP_BLUE + ";");
+            bindLabelTooltip(rangeHeader);
+            versePreviewBox.getChildren().add(rangeHeader);
+
+            for (VerseRow verseRow : verseRows) {
+                versePreviewBox.getChildren().add(createVersePreviewRow(verseRow));
+            }
+        }
+
+        if (versePreviewBox.getChildren().isEmpty()) {
+            versePreviewBox.getChildren().add(createPreviewPlaceholderLabel(hasReadyRange
+                    ? "A kijelölt szakaszokhoz jelenleg nem található megjeleníthető vers."
+                    : "A kiválasztott szakaszok versei itt jelennek meg, amikor elkészülsz a kijelöléssel."
+            ));
+        }
+    }
+
+    private void refreshRangeCopyButtons(String translation, List<RangeSelectionControls> rangeSelections) {
+        for (RangeSelectionControls rangeSelection : rangeSelections) {
+            rangeSelection.copyButton.setDisable(translation == null || !isCompletedRangeSelection(rangeSelection));
+        }
+    }
+
+    private Label createPreviewPlaceholderLabel(String text) {
+        Label placeholderLabel = new Label(text);
+        placeholderLabel.setWrapText(true);
+        placeholderLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
+        bindLabelTooltip(placeholderLabel);
+        return placeholderLabel;
+    }
+
+    private VBox createVersePreviewRow(VerseRow verseRow) {
+        Label referenceLabel = new Label(formatVerseReference(verseRow));
+        referenceLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: " + DEEP_BLUE + ";");
+        bindLabelTooltip(referenceLabel);
+
+        Label verseTextLabel = new Label(verseRow.text());
+        verseTextLabel.setWrapText(true);
+        verseTextLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
+        bindLabelTooltip(verseTextLabel);
+
+        VBox versePreviewRow = new VBox(2, referenceLabel, verseTextLabel);
+        versePreviewRow.setPadding(new Insets(8));
+        versePreviewRow.setStyle("-fx-background-color: rgba(53, 92, 138, 0.08); -fx-background-radius: 10;");
+        return versePreviewRow;
+    }
+
+    private void copyRangeSelection(RangeSelectionControls rangeSelection) {
+        if (activeTranslationBox == null || activeTranslationBox.getValue() == null || activeStatusLabel == null) {
+            return;
+        }
+        List<VerseRow> verseRows = verseBrowserService.findVerseRange(
+                activeTranslationBox.getValue(),
+                rangeSelection.bookBox.getValue(),
+                rangeSelection.chapterBox.getValue(),
+                rangeSelection.fromVerseBox.getValue(),
+                rangeSelection.toVerseBox.getValue()
+        );
+        if (verseRows.isEmpty()) {
+            activeStatusLabel.setText("A kijelölt szakaszhoz jelenleg nem található másolható vers.");
+            return;
+        }
+        copyTextToClipboard(formatVerseRangeText(
+                verseRows,
+                rangeSelection.fromVerseBox.getValue(),
+                rangeSelection.toVerseBox.getValue()
+        ));
+        activeStatusLabel.setText("A kijelölt szakasz a vágólapra került: " + rangeHeaderText(rangeSelection) + ".");
     }
 
     private void registerKeyboardShortcuts(
@@ -547,6 +665,12 @@ public class MainViewFactory {
             button.fire();
             event.consume();
         }
+    }
+
+    private void copyTextToClipboard(String text) {
+        ClipboardContent clipboardContent = new ClipboardContent();
+        clipboardContent.putString(text);
+        Clipboard.getSystemClipboard().setContent(clipboardContent);
     }
 
     private void restoreSavedSession(
@@ -651,20 +775,22 @@ public class MainViewFactory {
         ComboBox<Integer> fromVerseBox = new ComboBox<>();
         Label verseRangeSeparatorLabel = new Label("-");
         ComboBox<Integer> toVerseBox = new ComboBox<>();
+        Button copyButton = new Button(RANGE_COPY_BUTTON_TEXT);
         Button resetButton = new Button(RANGE_RESET_BUTTON_TEXT);
         Button removeButton = new Button("-");
         Button helpButton = createHelpButton("A szakaszsor súgójának megnyitása");
 
         configureRangeSelectionInputs(bookBox, chapterBox, fromVerseBox, toVerseBox, rangeLabel, chapterSeparatorLabel, verseRangeSeparatorLabel);
-        configureRangeSelectionButtons(resetButton, removeButton, helpButton);
+        configureRangeSelectionButtons(copyButton, resetButton, removeButton, helpButton);
 
         RangeSelectionControls rangeSelection = new RangeSelectionControls(
-                new HBox(12, rangeLabel, bookBox, chapterBox, chapterSeparatorLabel, fromVerseBox, verseRangeSeparatorLabel, toVerseBox, resetButton, removeButton),
+                new HBox(12, rangeLabel, bookBox, chapterBox, chapterSeparatorLabel, fromVerseBox, verseRangeSeparatorLabel, toVerseBox, copyButton, resetButton, removeButton),
                 rangeLabel,
                 bookBox,
                 chapterBox,
                 fromVerseBox,
                 toVerseBox,
+                copyButton,
                 removeButton,
                 helpButton
         );
@@ -678,6 +804,7 @@ public class MainViewFactory {
         setComboBoxItems(chapterBox, List.of());
         setComboBoxItems(fromVerseBox, List.of());
         setComboBoxItems(toVerseBox, List.of());
+        copyButton.setOnAction(_ -> copyRangeSelection(rangeSelection));
         resetButton.setOnAction(_ -> resetRangeSelection(
                 rangeSelection,
                 activeTranslationBox == null ? null : activeTranslationBox.getValue(),
@@ -712,7 +839,12 @@ public class MainViewFactory {
         rangeLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
     }
 
-    private void configureRangeSelectionButtons(Button resetButton, Button removeButton, Button helpButton) {
+    private void configureRangeSelectionButtons(Button copyButton, Button resetButton, Button removeButton, Button helpButton) {
+        copyButton.setDisable(true);
+        copyButton.setMinWidth(Region.USE_PREF_SIZE);
+        copyButton.setAlignment(Pos.CENTER);
+        copyButton.setStyle(iconButtonStyle());
+        copyButton.setTooltip(new Tooltip("Csak ennek a szakasznak a másolása a vágólapra"));
         resetButton.setStyle(secondaryButtonStyle());
         resetButton.setTooltip(new Tooltip("A szakaszsor alaphelyzetbe állítása"));
         removeButton.setStyle(secondaryButtonStyle());
@@ -976,6 +1108,28 @@ public class MainViewFactory {
                 || rangeSelection.toVerseBox.getValue() != null);
     }
 
+    private boolean isCompletedRangeSelection(RangeSelectionControls rangeSelection) {
+        return rangeSelection.bookBox.getValue() != null
+                && rangeSelection.chapterBox.getValue() != null
+                && isRangeReady(rangeSelection.fromVerseBox.getValue(), rangeSelection.toVerseBox.getValue());
+    }
+
+    private String rangeHeaderText(RangeSelectionControls rangeSelection) {
+        return rangeSelection.displayIndex
+                + ". szakasz — "
+                + BookNameCanonicalizer.canonicalBookName(rangeSelection.bookBox.getValue())
+                + " "
+                + rangeSelection.chapterBox.getValue()
+                + ":"
+                + (Objects.equals(rangeSelection.fromVerseBox.getValue(), rangeSelection.toVerseBox.getValue())
+                ? String.valueOf(rangeSelection.fromVerseBox.getValue())
+                : rangeSelection.fromVerseBox.getValue() + "-" + rangeSelection.toVerseBox.getValue());
+    }
+
+    private String formatVerseReference(VerseRow verseRow) {
+        return BookNameCanonicalizer.canonicalBookName(verseRow.book()) + " " + verseRow.chapter() + ":" + verseRow.verse();
+    }
+
     private boolean isCopyReady(String translation, List<RangeSelectionControls> rangeSelections) {
         return translation != null
                 && !rangeSelections.isEmpty()
@@ -1186,6 +1340,7 @@ public class MainViewFactory {
         private final ComboBox<Integer> chapterBox;
         private final ComboBox<Integer> fromVerseBox;
         private final ComboBox<Integer> toVerseBox;
+        private final Button copyButton;
         private final Button removeButton;
         private final Button helpButton;
         private final Label statusLabel;
@@ -1200,6 +1355,7 @@ public class MainViewFactory {
                 ComboBox<Integer> chapterBox,
                 ComboBox<Integer> fromVerseBox,
                 ComboBox<Integer> toVerseBox,
+                Button copyButton,
                 Button removeButton,
                 Button helpButton
         ) {
@@ -1209,6 +1365,7 @@ public class MainViewFactory {
             this.chapterBox = chapterBox;
             this.fromVerseBox = fromVerseBox;
             this.toVerseBox = toVerseBox;
+            this.copyButton = copyButton;
             this.removeButton = removeButton;
             this.helpButton = helpButton;
             this.statusLabel = new Label();

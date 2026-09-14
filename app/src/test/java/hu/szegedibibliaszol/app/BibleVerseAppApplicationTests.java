@@ -39,6 +39,13 @@ class BibleVerseAppApplicationTests {
     }
 
     @Test
+    void applicationClassCanBeInstantiated() throws Exception {
+        Object application = BibleVerseAppApplication.class.getDeclaredConstructor().newInstance();
+
+        assertEquals(BibleVerseAppApplication.class, application.getClass());
+    }
+
+    @Test
     void verseBrowserServiceReadsRepositoryBackedSelectionsFromSqlite() throws Exception {
         populateVersesTable();
 

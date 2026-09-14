@@ -21,6 +21,16 @@ import static org.mockito.Mockito.when;
 class DatabaseUiSessionServiceTest {
 
     @Test
+    void stringBasedConstructorUsesConfiguredDatabasePath() {
+        DatabaseUiSessionService uiSessionService = new DatabaseUiSessionService(
+                mock(JdbcTemplate.class),
+                "target/non-existent-ui-session-string.db"
+        );
+
+        assertEquals(Optional.empty(), uiSessionService.loadSession());
+    }
+
+    @Test
     void loadSessionReturnsEmptyWhenDatabaseFileIsMissing() {
         DatabaseUiSessionService uiSessionService = new DatabaseUiSessionService(
                 mock(JdbcTemplate.class),

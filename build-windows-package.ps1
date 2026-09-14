@@ -120,6 +120,7 @@ try {
         '--app-version', $appVersion,
             '--vendor', 'Bible Verse Tool',
             '--java-options', '--enable-native-access=ALL-UNNAMED',
+            '--java-options', '-XX:TieredStopAtLevel=1',
             '--java-options', '-Dapp.database.path=$APPDIR\data\bible-verses.db'
     )
 

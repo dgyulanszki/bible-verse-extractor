@@ -68,6 +68,22 @@ class JavaFxApplicationTest {
     }
 
     @Test
+    void resolveStartupDatabasePathPrefersConfiguredValue() throws IOException {
+        Path configuredDatabasePath = Files.createTempFile("configured-app-db", ".db");
+        Path repositoryRoot = Files.createTempDirectory("app-repo-root-configured");
+        Files.createFile(repositoryRoot.resolve("pom.xml"));
+        Files.createDirectories(repositoryRoot.resolve("app"));
+        Files.createDirectories(repositoryRoot.resolve("scraper"));
+
+        Path resolvedPath = JavaFxApplication.resolveStartupDatabasePath(
+                configuredDatabasePath.toString(),
+                repositoryRoot.resolve("scraper")
+        );
+
+        assertEquals(configuredDatabasePath, resolvedPath);
+    }
+
+    @Test
     void findRepositoryRootReturnsEmptyWhenRepositoryMarkersAreMissing() throws IOException {
         Path unrelatedDirectory = Files.createTempDirectory("app-no-markers");
 
