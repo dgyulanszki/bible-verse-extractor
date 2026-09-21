@@ -6,6 +6,7 @@ import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -57,6 +58,8 @@ public class MainViewFactory {
     private static final String DEEP_BLUE = "#25476F";
     private static final String PALE_BLUE = "#EAF2FB";
     private static final String PANEL_WHITE = "#FFFFFF";
+    private static final String LAST_RANGE_ROW_BACKGROUND = "#0F766E";
+    private static final String LAST_RANGE_ROW_BORDER = "#99F6E4";
     private static final String RANGE_RESET_BUTTON_TEXT = "↺";
     private static final String RANGE_COPY_BUTTON_TEXT = "⧉";
     private static final String DEFAULT_BUTTON_STYLE = "-fx-font-weight: bold; -fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: ";
@@ -96,6 +99,9 @@ public class MainViewFactory {
         Button saveButton = new Button("Mentés");
         Button copyButton = new Button("Másolás");
         Button resetButton = new Button("Alaphelyzet");
+        Button deleteEmptyRowsButton = new Button("Üres sorok törlése");
+        Button undoButton = new Button("Vissza");
+        Button redoButton = new Button("Előre");
         Button tutorialButton = new Button("Útmutató");
         Button generalHelpButton = createHelpButton("Az általános súgó megnyitása");
         Label statusLabel = new Label(INITIAL_STATUS_MESSAGE);
@@ -103,6 +109,7 @@ public class MainViewFactory {
         VBox versePreviewBox = new VBox(10);
         List<RangeSelectionControls> rangeSelections = new ArrayList<>();
         ScrollPane mainScrollPane = new ScrollPane();
+        UiHistoryManager historyManager = new UiHistoryManager();
 
         this.activeTranslationBox = translationBox;
         this.activeStatusLabel = statusLabel;
@@ -122,9 +129,18 @@ public class MainViewFactory {
         saveButton.setTooltip(new Tooltip("Az aktuális munkamenet mentése (Ctrl+S)"));
         copyButton.setTooltip(new Tooltip("Az összes kész szakasz másolása a vágólapra (Ctrl+C)"));
         resetButton.setTooltip(new Tooltip("Az összes kijelölés alaphelyzetbe állítása (Ctrl+R)"));
+        deleteEmptyRowsButton.setTooltip(new Tooltip("Az összes üres szakaszsor törlése"));
+        undoButton.setTooltip(new Tooltip("Az utolsó művelet visszavonása (Ctrl+Z)"));
+        redoButton.setTooltip(new Tooltip("A visszavont művelet ismétlése (Ctrl+Y)"));
         saveButton.setStyle(secondaryButtonStyle());
         copyButton.setStyle(primaryButtonStyle());
         resetButton.setStyle(secondaryButtonStyle());
+        deleteEmptyRowsButton.setStyle(secondaryButtonStyle());
+        undoButton.setStyle(secondaryButtonStyle());
+        redoButton.setStyle(secondaryButtonStyle());
+        deleteEmptyRowsButton.setDisable(true);
+        undoButton.setDisable(true);
+        redoButton.setDisable(true);
         tutorialButton.setStyle(primaryButtonStyle());
         tutorialButton.setTooltip(new Tooltip("Gyors kezdési útmutató megnyitása új felhasználóknak"));
         translationHelpButton.setStyle(helpButtonStyle());
@@ -134,10 +150,12 @@ public class MainViewFactory {
 
         Runnable refreshSelectionState = () -> {
             copyButton.setDisable(!isCopyReady(translationBox.getValue(), rangeSelections));
+            refreshDeleteEmptyRowsButton(deleteEmptyRowsButton, rangeSelections);
             refreshRangeCopyButtons(translationBox.getValue(), rangeSelections);
             refreshVersePreview(translationBox.getValue(), rangeSelections, versePreviewBox);
         };
-        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState);
+        Runnable recordUndoableChange = () -> historyManager.recordSnapshotChange(currentSessionSnapshot(), undoButton, redoButton);
+        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState, recordUndoableChange);
 
         translationBox.valueProperty().addListener((_, oldValue, newValue) -> {
             if (suppressTranslationChangeHandling || Objects.equals(oldValue, newValue)) {
@@ -153,6 +171,7 @@ public class MainViewFactory {
                 return;
             }
             applyTranslationSelection(newValue, rangeSelections, addRangeButton, statusLabel, refreshSelectionState);
+            recordUndoableChange.run();
         });
 
         translationHelpButton.setOnAction(_ -> createTranslationHelpAlert().showAndWait());
@@ -160,7 +179,7 @@ public class MainViewFactory {
         generalHelpButton.setOnAction(_ -> createGeneralHelpAlert().showAndWait());
 
         addRangeButton.setOnAction(_ -> {
-            RangeSelectionControls rangeSelection = addRangeSelection(rangeSelectionsBox, rangeSelections, refreshSelectionState);
+            RangeSelectionControls rangeSelection = addRangeSelection(rangeSelectionsBox, rangeSelections, refreshSelectionState, recordUndoableChange);
             if (translationBox.getValue() != null) {
                 rangeSelection.suppressSelectionChangeHandling = true;
                 try {
@@ -172,6 +191,7 @@ public class MainViewFactory {
             refreshRangeSelectionPresentation(rangeSelections);
             refreshSelectionState.run();
             statusLabel.setText("Új szakasz hozzáadva. Válassz könyvet.");
+            recordUndoableChange.run();
             mainScrollPane.setVvalue(1.0);
         });
 
@@ -206,10 +226,46 @@ public class MainViewFactory {
                 suppressTranslationChangeHandling = false;
             }
             setComboBoxItems(translationBox, verseBrowserService.getTranslations());
-            rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState);
+            rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState, recordUndoableChange);
             addRangeButton.setDisable(true);
             statusLabel.setText(INITIAL_STATUS_MESSAGE);
+            recordUndoableChange.run();
         });
+
+        deleteEmptyRowsButton.setOnAction(_ -> {
+            int removedCount = removeEmptyRangeSelections(rangeSelectionsBox, rangeSelections);
+            if (removedCount > 0) {
+                refreshRangeSelectionPresentation(rangeSelections);
+                refreshSelectionState.run();
+                statusLabel.setText(removedCount + " üres szakaszsor törölve.");
+                recordUndoableChange.run();
+            }
+        });
+
+        undoButton.setOnAction(_ -> handleUndo(
+                historyManager,
+                undoButton,
+                redoButton,
+                translationBox,
+                addRangeButton,
+                rangeSelectionsBox,
+                rangeSelections,
+                statusLabel,
+                refreshSelectionState,
+                recordUndoableChange
+        ));
+        redoButton.setOnAction(_ -> handleRedo(
+                historyManager,
+                undoButton,
+                redoButton,
+                translationBox,
+                addRangeButton,
+                rangeSelectionsBox,
+                rangeSelections,
+                statusLabel,
+                refreshSelectionState,
+                recordUndoableChange
+        ));
 
         HBox generalHelpRow = new HBox(8, tutorialButton, generalHelpButton);
         generalHelpRow.setAlignment(Pos.CENTER_RIGHT);
@@ -220,7 +276,10 @@ public class MainViewFactory {
                 translationHelpButton,
                 saveButton,
                 copyButton,
-                resetButton
+                resetButton,
+                deleteEmptyRowsButton,
+                undoButton,
+                redoButton
         );
         translationRow.setPadding(new Insets(0, 12, 4, 12));
         translationRow.setStyle(panelRowStyle());
@@ -267,12 +326,13 @@ public class MainViewFactory {
         mainScrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         mainScrollPane.setStyle("-fx-background: " + DEEP_BLUE + "; -fx-background-color: transparent;");
         root.setCenter(mainScrollPane);
-        registerKeyboardShortcuts(root, addRangeButton, saveButton, copyButton, resetButton);
+        registerKeyboardShortcuts(root, addRangeButton, saveButton, copyButton, resetButton, undoButton, redoButton);
 
         HBox.setHgrow(translationBox, Priority.ALWAYS);
 
-        restoreSavedSession(translationBox, addRangeButton, rangeSelectionsBox, rangeSelections, statusLabel, refreshSelectionState);
+        restoreSavedSession(translationBox, addRangeButton, rangeSelectionsBox, rangeSelections, statusLabel, refreshSelectionState, recordUndoableChange);
         refreshSelectionState.run();
+        historyManager.initialize(currentSessionSnapshot(), undoButton, redoButton);
         return root;
     }
 
@@ -303,9 +363,12 @@ public class MainViewFactory {
                 7. A Mentés gomb vagy a Ctrl+S billentyűparancs kézzel elmenti az aktuális munkamenetet.
                 8. A Másolás gomb vagy a Ctrl+C billentyűparancs az összes kész szakaszt egyetlen blokkba másolja.
                 9. Minden kész szakaszsor saját Másolás gombot kap, így az adott igerészt külön is kimásolhatod.
-                10. Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
-                11. Ha egy felirat rövidítve látszik, vidd fölé az egeret: a teljes szöveg buboréksúgóban megjelenik.
-                12. Az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.
+                10. Az Üres sorok törlése gomb egy kattintással kiszedi az összes teljesen üres szakaszsort.
+                11. A Vissza és Előre gombokkal, illetve a Ctrl+Z és Ctrl+Y billentyűparancsokkal visszavonhatod vagy ismételheted a lépéseidet.
+                12. Ha csak egy verset szeretnél, elég a kezdő verset kiválasztani: a záró vers ilyenkor automatikusan ugyanaz lesz.
+                13. Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
+                14. Ha egy felirat rövidítve látszik, vidd fölé az egeret: a teljes szöveg buboréksúgóban megjelenik.
+                15. Az alkalmazás bezárásakor a munkamenet automatikusan elmentődik.
                 """;
     }
 
@@ -318,9 +381,12 @@ public class MainViewFactory {
                 4. Ha egy sort törölnél vagy újrakezdenél, használd a - vagy a ↺ gombot.
                 5. Ha elkészültél, a Másolás gombbal vagy a Ctrl+C billentyűparanccsal másold a teljes szöveget a vágólapra.
                 6. Ha csak egy szakaszt másolnál, használd az adott szakaszsor saját Másolás gombját.
-                7. A Mentés gombbal vagy a Ctrl+S billentyűparanccsal mentsd el a munkamenetet.
-                8. Az Alaphelyzet gombbal vagy a Ctrl+R billentyűparanccsal mindent lenullázhatsz.
-                9. Ha valamelyik felirat rövidítve látszik, vidd fölé az egeret a teljes buboréksúgóért.
+                7. Ha egyetlen vers kell, a kezdő vers kiválasztása automatikusan kitölti a záró verset is.
+                8. Az Üres sorok törlése gombbal gyorsan eltávolíthatod a már nem használt, teljesen üres szakaszsorokat.
+                9. A Vissza és Előre gombokkal vagy a Ctrl+Z és Ctrl+Y billentyűparancsokkal javíthatod a legutóbbi lépéseket.
+                10. A Mentés gombbal vagy a Ctrl+S billentyűparanccsal mentsd el a munkamenetet.
+                11. Az Alaphelyzet gombbal vagy a Ctrl+R billentyűparanccsal mindent lenullázhatsz.
+                12. Ha valamelyik felirat rövidítve látszik, vidd fölé az egeret a teljes buboréksúgóért.
                 """;
     }
 
@@ -330,7 +396,9 @@ public class MainViewFactory {
                 - A + gomb vagy a numerikus billentyűzet + gombja új szakaszsort ad hozzá.
                 - A Mentés gomb vagy a Ctrl+S billentyűparancs kézzel elmenti az aktuális munkamenetet.
                 - A Másolás gomb vagy a Ctrl+C billentyűparancs az összes kész szakaszt a vágólapra másolja.
+                - Az Üres sorok törlése gomb eltávolít minden teljesen üres szakaszsort, és legalább egy sort mindig megtart.
                 - Minden kész szakaszsor külön Másolás gombot kap az egyedi szakaszmásoláshoz.
+                - A Vissza és Előre gombok, illetve a Ctrl+Z és Ctrl+Y billentyűparancsok a legutóbbi állapotokat kezelik.
                 - Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
                 - A fordítás módosítását a program megerősítteti, ha már van kitöltött alsó szintű választás.
                 """;
@@ -342,6 +410,7 @@ public class MainViewFactory {
                 - A legördülők első eleme a kiürített, alapértelmezett állapot.
                 - A ↺ gomb csak az adott sort állítja vissza alaphelyzetbe.
                 - A kezdő és záró vers lehet ugyanaz is.
+                - Ha a kezdő verset kitöltöd, de a záró vers üres, a program automatikusan ugyanarra a versre állítja.
                 - A könyv módosítását a program megerősítteti, ha a sorban már van fejezet- vagy versválasztás.
                 - A - gomb eltávolítja az adott szakaszsort.
                 - A sor szövegei fölé húzva az egeret a teljes felirat buboréksúgóban látható.
@@ -438,6 +507,11 @@ public class MainViewFactory {
     private String panelRowStyle() {
         return "-fx-background-color: rgba(255, 255, 255, 0.14); -fx-background-radius: 10;"
                 + " -fx-border-color: rgba(255, 255, 255, 0.32); -fx-border-radius: 10; -fx-padding: 10;";
+    }
+
+    private String highlightedPanelRowStyle() {
+        return "-fx-background-color: " + LAST_RANGE_ROW_BACKGROUND + "; -fx-background-radius: 10;"
+                + " -fx-border-color: " + LAST_RANGE_ROW_BORDER + "; -fx-border-radius: 10; -fx-padding: 10;";
     }
 
     private String comboBoxStyle() {
@@ -636,7 +710,9 @@ public class MainViewFactory {
             Button addRangeButton,
             Button saveButton,
             Button copyButton,
-            Button resetButton
+            Button resetButton,
+            Button undoButton,
+            Button redoButton
     ) {
         root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.isShortcutDown()) {
@@ -650,6 +726,14 @@ public class MainViewFactory {
                 }
                 if (event.getCode() == KeyCode.R) {
                     fireIfEnabled(resetButton, event);
+                    return;
+                }
+                if (event.getCode() == KeyCode.Z) {
+                    fireIfEnabled(undoButton, event);
+                    return;
+                }
+                if (event.getCode() == KeyCode.Y) {
+                    fireIfEnabled(redoButton, event);
                     return;
                 }
             }
@@ -679,7 +763,8 @@ public class MainViewFactory {
             VBox rangeSelectionsBox,
             List<RangeSelectionControls> rangeSelections,
             Label statusLabel,
-            Runnable refreshCopyState
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
     ) {
         Optional<AppSessionSnapshot> savedSession = uiSessionService.loadSession();
         if (savedSession.isEmpty() || savedSession.get().isEmpty()) {
@@ -695,7 +780,7 @@ public class MainViewFactory {
         }
 
         int desiredRangeCount = Math.max(1, sessionSnapshot.ranges().size());
-        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, desiredRangeCount);
+        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, recordUndoableChange, desiredRangeCount);
         suppressTranslationChangeHandling = true;
         try {
             translationBox.setValue(savedTranslation);
@@ -730,21 +815,23 @@ public class MainViewFactory {
     private void rebuildRangeSelections(
             VBox rangeSelectionsBox,
             List<RangeSelectionControls> rangeSelections,
-            Runnable refreshCopyState
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
     ) {
-        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, 1);
+        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, recordUndoableChange, 1);
     }
 
     private void rebuildRangeSelections(
             VBox rangeSelectionsBox,
             List<RangeSelectionControls> rangeSelections,
             Runnable refreshCopyState,
+            Runnable recordUndoableChange,
             int desiredRangeCount
     ) {
         rangeSelectionsBox.getChildren().clear();
         rangeSelections.clear();
         for (int index = 0; index < desiredRangeCount; index++) {
-            addRangeSelection(rangeSelectionsBox, rangeSelections, refreshCopyState);
+            addRangeSelection(rangeSelectionsBox, rangeSelections, refreshCopyState, recordUndoableChange);
         }
         refreshRangeSelectionPresentation(rangeSelections);
         refreshCopyState.run();
@@ -753,21 +840,23 @@ public class MainViewFactory {
     private RangeSelectionControls addRangeSelection(
             VBox rangeSelectionsBox,
             List<RangeSelectionControls> rangeSelections,
-            Runnable refreshCopyState
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
     ) {
-        RangeSelectionControls rangeSelection = createRangeSelectionControls(refreshCopyState);
+        RangeSelectionControls rangeSelection = createRangeSelectionControls(refreshCopyState, recordUndoableChange);
         rangeSelection.removeButton.setOnAction(_ -> {
             rangeSelections.remove(rangeSelection);
             rangeSelectionsBox.getChildren().remove(rangeSelection.container);
             refreshRangeSelectionPresentation(rangeSelections);
             refreshCopyState.run();
+            recordUndoableChange.run();
         });
         rangeSelections.add(rangeSelection);
         rangeSelectionsBox.getChildren().add(rangeSelection.container);
         return rangeSelection;
     }
 
-    private RangeSelectionControls createRangeSelectionControls(Runnable refreshCopyState) {
+    private RangeSelectionControls createRangeSelectionControls(Runnable refreshCopyState, Runnable recordUndoableChange) {
         Label rangeLabel = new Label("Szakasz");
         ComboBox<String> bookBox = new ComboBox<>();
         ComboBox<Integer> chapterBox = new ComboBox<>();
@@ -805,12 +894,15 @@ public class MainViewFactory {
         setComboBoxItems(fromVerseBox, List.of());
         setComboBoxItems(toVerseBox, List.of());
         copyButton.setOnAction(_ -> copyRangeSelection(rangeSelection));
-        resetButton.setOnAction(_ -> resetRangeSelection(
-                rangeSelection,
-                activeTranslationBox == null ? null : activeTranslationBox.getValue(),
-                refreshCopyState
-        ));
-        configureRangeSelectionListeners(rangeSelection, refreshCopyState);
+        resetButton.setOnAction(_ -> {
+            resetRangeSelection(
+                    rangeSelection,
+                    activeTranslationBox == null ? null : activeTranslationBox.getValue(),
+                    refreshCopyState
+            );
+            recordUndoableChange.run();
+        });
+        configureRangeSelectionListeners(rangeSelection, refreshCopyState, recordUndoableChange);
         return rangeSelection;
     }
 
@@ -853,20 +945,34 @@ public class MainViewFactory {
         helpButton.setOnAction(_ -> createRangeHelpAlert().showAndWait());
     }
 
-    private void configureRangeSelectionListeners(RangeSelectionControls rangeSelection, Runnable refreshCopyState) {
+    private void configureRangeSelectionListeners(
+            RangeSelectionControls rangeSelection,
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
+    ) {
         rangeSelection.bookBox.valueProperty().addListener((_, oldValue, newValue) -> handleBookSelectionChange(
                 rangeSelection,
                 oldValue,
                 newValue,
-                refreshCopyState
+                refreshCopyState,
+                recordUndoableChange
         ));
         rangeSelection.chapterBox.valueProperty().addListener((_, _, newValue) -> handleChapterSelectionChange(
                 rangeSelection,
                 newValue,
-                refreshCopyState
+                refreshCopyState,
+                recordUndoableChange
         ));
-        rangeSelection.fromVerseBox.valueProperty().addListener((_, _, _) -> handleVerseSelectionChange(rangeSelection, refreshCopyState));
-        rangeSelection.toVerseBox.valueProperty().addListener((_, _, _) -> handleVerseSelectionChange(rangeSelection, refreshCopyState));
+        rangeSelection.fromVerseBox.valueProperty().addListener((_, _, _) -> handleVerseSelectionChange(
+                rangeSelection,
+                refreshCopyState,
+                recordUndoableChange
+        ));
+        rangeSelection.toVerseBox.valueProperty().addListener((_, _, _) -> handleVerseSelectionChange(
+                rangeSelection,
+                refreshCopyState,
+                recordUndoableChange
+        ));
     }
 
     private void resetRangeSelection(RangeSelectionControls rangeSelection, String translation, Runnable refreshCopyState) {
@@ -964,7 +1070,8 @@ public class MainViewFactory {
             RangeSelectionControls rangeSelection,
             String oldValue,
             String newValue,
-            Runnable refreshCopyState
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
     ) {
         if (rangeSelection.suppressSelectionChangeHandling || Objects.equals(oldValue, newValue)) {
             return;
@@ -979,24 +1086,32 @@ public class MainViewFactory {
             return;
         }
         applyBookSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
+        recordUndoableChange.run();
     }
 
     private void handleChapterSelectionChange(
             RangeSelectionControls rangeSelection,
             Integer newValue,
-            Runnable refreshCopyState
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
     ) {
         if (rangeSelection.suppressSelectionChangeHandling) {
             return;
         }
         applyChapterSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
+        recordUndoableChange.run();
     }
 
-    private void handleVerseSelectionChange(RangeSelectionControls rangeSelection, Runnable refreshCopyState) {
+    private void handleVerseSelectionChange(
+            RangeSelectionControls rangeSelection,
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
+    ) {
         if (rangeSelection.suppressSelectionChangeHandling) {
             return;
         }
         updateVerseRangeBoxes(rangeSelection, refreshCopyState);
+        recordUndoableChange.run();
     }
 
     private void restoreRangeSelection(
@@ -1039,6 +1154,7 @@ public class MainViewFactory {
             rangeSelection.displayIndex = index + 1;
             rangeSelection.rangeLabel.setText("Szakasz " + rangeSelection.displayIndex);
             rangeSelection.removeButton.setDisable(disableRemoveButtons);
+            rangeSelection.container.setStyle(index == rangeSelections.size() - 1 ? highlightedPanelRowStyle() : panelRowStyle());
             boolean showHelpButton = index == 0;
             rangeSelection.helpButton.setManaged(showHelpButton);
             rangeSelection.helpButton.setVisible(showHelpButton);
@@ -1056,17 +1172,25 @@ public class MainViewFactory {
 
         Integer selectedFromVerse = rangeSelection.fromVerseBox.getValue();
         Integer selectedToVerse = rangeSelection.toVerseBox.getValue();
-        List<Integer> availableFromVerses = selectedToVerse == null
+        if (selectedFromVerse != null && selectedToVerse == null && availableVerses.contains(selectedFromVerse)) {
+            selectedToVerse = selectedFromVerse;
+        }
+        Integer normalizedSelectedToVerse = selectedToVerse;
+        Integer normalizedSelectedFromVerse = selectedFromVerse;
+        List<Integer> availableFromVerses = normalizedSelectedToVerse == null
                 ? availableVerses
-                : availableVerses.stream().filter(verse -> verse <= selectedToVerse).toList();
-        List<Integer> availableToVerses = selectedFromVerse == null
+                : availableVerses.stream().filter(verse -> verse <= normalizedSelectedToVerse).toList();
+        List<Integer> availableToVerses = normalizedSelectedFromVerse == null
                 ? availableVerses
-                : availableVerses.stream().filter(verse -> verse >= selectedFromVerse).toList();
+                : availableVerses.stream().filter(verse -> verse >= normalizedSelectedFromVerse).toList();
 
         rangeSelection.suppressSelectionChangeHandling = true;
         try {
             updateComboBoxItems(rangeSelection.fromVerseBox, availableFromVerses);
             updateComboBoxItems(rangeSelection.toVerseBox, availableToVerses);
+            if (selectedFromVerse != null && selectedToVerse != null && rangeSelection.toVerseBox.getValue() == null) {
+                selectIfAvailable(rangeSelection.toVerseBox, selectedToVerse);
+            }
         } finally {
             rangeSelection.suppressSelectionChangeHandling = false;
         }
@@ -1114,6 +1238,13 @@ public class MainViewFactory {
                 && isRangeReady(rangeSelection.fromVerseBox.getValue(), rangeSelection.toVerseBox.getValue());
     }
 
+    private boolean isEmptyRangeSelection(RangeSelectionControls rangeSelection) {
+        return rangeSelection.bookBox.getValue() == null
+                && rangeSelection.chapterBox.getValue() == null
+                && rangeSelection.fromVerseBox.getValue() == null
+                && rangeSelection.toVerseBox.getValue() == null;
+    }
+
     private String rangeHeaderText(RangeSelectionControls rangeSelection) {
         return rangeSelection.displayIndex
                 + ". szakasz — "
@@ -1136,6 +1267,20 @@ public class MainViewFactory {
                 && rangeSelections.stream().allMatch(rangeSelection -> rangeSelection.bookBox.getValue() != null
                 && rangeSelection.chapterBox.getValue() != null
                 && isRangeReady(rangeSelection.fromVerseBox.getValue(), rangeSelection.toVerseBox.getValue()));
+    }
+
+    private void refreshDeleteEmptyRowsButton(Button deleteEmptyRowsButton, List<RangeSelectionControls> rangeSelections) {
+        deleteEmptyRowsButton.setDisable(rangeSelections.size() <= 1 || rangeSelections.stream().noneMatch(this::isEmptyRangeSelection));
+    }
+
+    private int removeEmptyRangeSelections(VBox rangeSelectionsBox, List<RangeSelectionControls> rangeSelections) {
+        List<RangeSelectionControls> rangeSelectionsToRemove = rangeSelections.stream()
+                .filter(this::isEmptyRangeSelection)
+                .limit(Math.max(0L, rangeSelections.size() - 1L))
+                .toList();
+        rangeSelections.removeAll(rangeSelectionsToRemove);
+        rangeSelectionsBox.getChildren().removeAll(rangeSelectionsToRemove.stream().map(rangeSelection -> rangeSelection.container).toList());
+        return rangeSelectionsToRemove.size();
     }
 
     private <T> void setComboBoxItems(ComboBox<T> comboBox, List<T> items) {
@@ -1176,6 +1321,102 @@ public class MainViewFactory {
         } finally {
             rangeSelection.suppressSelectionChangeHandling = false;
         }
+    }
+
+    private void handleUndo(
+            UiHistoryManager historyManager,
+            Button undoButton,
+            Button redoButton,
+            ComboBox<String> translationBox,
+            Button addRangeButton,
+            VBox rangeSelectionsBox,
+            List<RangeSelectionControls> rangeSelections,
+            Label statusLabel,
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
+    ) {
+        Optional<AppSessionSnapshot> targetSnapshot = historyManager.prepareUndo(undoButton, redoButton);
+        if (targetSnapshot.isEmpty()) {
+            return;
+        }
+        historyManager.runWhileRestoring(() -> applySessionSnapshot(
+                targetSnapshot.get(),
+                translationBox,
+                addRangeButton,
+                rangeSelectionsBox,
+                rangeSelections,
+                refreshCopyState,
+                recordUndoableChange
+        ));
+        historyManager.synchronize(currentSessionSnapshot(), undoButton, redoButton);
+        statusLabel.setText("A legutóbbi művelet visszavonva.");
+    }
+
+    private void handleRedo(
+            UiHistoryManager historyManager,
+            Button undoButton,
+            Button redoButton,
+            ComboBox<String> translationBox,
+            Button addRangeButton,
+            VBox rangeSelectionsBox,
+            List<RangeSelectionControls> rangeSelections,
+            Label statusLabel,
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
+    ) {
+        Optional<AppSessionSnapshot> targetSnapshot = historyManager.prepareRedo(undoButton, redoButton);
+        if (targetSnapshot.isEmpty()) {
+            return;
+        }
+        historyManager.runWhileRestoring(() -> applySessionSnapshot(
+                targetSnapshot.get(),
+                translationBox,
+                addRangeButton,
+                rangeSelectionsBox,
+                rangeSelections,
+                refreshCopyState,
+                recordUndoableChange
+        ));
+        historyManager.synchronize(currentSessionSnapshot(), undoButton, redoButton);
+        statusLabel.setText("A visszavont művelet ismét végrehajtva.");
+    }
+
+    private void applySessionSnapshot(
+            AppSessionSnapshot sessionSnapshot,
+            ComboBox<String> translationBox,
+            Button addRangeButton,
+            VBox rangeSelectionsBox,
+            List<RangeSelectionControls> rangeSelections,
+            Runnable refreshCopyState,
+            Runnable recordUndoableChange
+    ) {
+        if (sessionSnapshot.isEmpty()) {
+            suppressTranslationChangeHandling = true;
+            try {
+                translationBox.setValue(null);
+            } finally {
+                suppressTranslationChangeHandling = false;
+            }
+            setComboBoxItems(translationBox, verseBrowserService.getTranslations());
+            rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, recordUndoableChange);
+            addRangeButton.setDisable(true);
+            refreshCopyState.run();
+            return;
+        }
+
+        int desiredRangeCount = Math.max(1, sessionSnapshot.ranges().size());
+        rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshCopyState, recordUndoableChange, desiredRangeCount);
+        suppressTranslationChangeHandling = true;
+        try {
+            translationBox.setValue(sessionSnapshot.translation());
+        } finally {
+            suppressTranslationChangeHandling = false;
+        }
+        applyTranslationSelection(sessionSnapshot.translation(), rangeSelections, addRangeButton, activeStatusLabel, refreshCopyState);
+        for (int index = 0; index < sessionSnapshot.ranges().size(); index++) {
+            restoreRangeSelection(rangeSelections.get(index), sessionSnapshot.translation(), sessionSnapshot.ranges().get(index), refreshCopyState);
+        }
+        refreshCopyState.run();
     }
 
     private <T> void selectIfAvailable(ComboBox<T> comboBox, T value) {
@@ -1301,6 +1542,70 @@ public class MainViewFactory {
                 return parseInteger(text);
             }
         };
+    }
+
+    private static final class UiHistoryManager {
+
+        private final ArrayDeque<AppSessionSnapshot> undoSnapshots = new ArrayDeque<>();
+        private final ArrayDeque<AppSessionSnapshot> redoSnapshots = new ArrayDeque<>();
+        private AppSessionSnapshot lastCommittedSnapshot = new AppSessionSnapshot(null, List.of());
+        private boolean restoring;
+
+        private void initialize(AppSessionSnapshot snapshot, Button undoButton, Button redoButton) {
+            undoSnapshots.clear();
+            redoSnapshots.clear();
+            lastCommittedSnapshot = snapshot;
+            updateButtons(undoButton, redoButton);
+        }
+
+        private void recordSnapshotChange(AppSessionSnapshot snapshot, Button undoButton, Button redoButton) {
+            if (restoring || snapshot.equals(lastCommittedSnapshot)) {
+                return;
+            }
+            undoSnapshots.addLast(lastCommittedSnapshot);
+            lastCommittedSnapshot = snapshot;
+            redoSnapshots.clear();
+            updateButtons(undoButton, redoButton);
+        }
+
+        private Optional<AppSessionSnapshot> prepareUndo(Button undoButton, Button redoButton) {
+            if (undoSnapshots.isEmpty()) {
+                return Optional.empty();
+            }
+            redoSnapshots.addLast(lastCommittedSnapshot);
+            lastCommittedSnapshot = undoSnapshots.removeLast();
+            updateButtons(undoButton, redoButton);
+            return Optional.of(lastCommittedSnapshot);
+        }
+
+        private Optional<AppSessionSnapshot> prepareRedo(Button undoButton, Button redoButton) {
+            if (redoSnapshots.isEmpty()) {
+                return Optional.empty();
+            }
+            undoSnapshots.addLast(lastCommittedSnapshot);
+            lastCommittedSnapshot = redoSnapshots.removeLast();
+            updateButtons(undoButton, redoButton);
+            return Optional.of(lastCommittedSnapshot);
+        }
+
+        private void runWhileRestoring(Runnable action) {
+            restoring = true;
+            try {
+                action.run();
+            } finally {
+                restoring = false;
+            }
+        }
+
+        private void synchronize(AppSessionSnapshot snapshot, Button undoButton, Button redoButton) {
+            lastCommittedSnapshot = snapshot;
+            updateButtons(undoButton, redoButton);
+        }
+
+        private void updateButtons(Button undoButton, Button redoButton) {
+            undoButton.setDisable(undoSnapshots.isEmpty());
+            redoButton.setDisable(redoSnapshots.isEmpty());
+        }
     }
 
     private boolean isEditorUpdateInProgress(ComboBox<?> comboBox) {

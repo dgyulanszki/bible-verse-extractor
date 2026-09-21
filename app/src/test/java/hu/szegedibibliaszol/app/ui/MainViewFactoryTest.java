@@ -81,6 +81,9 @@ class MainViewFactoryTest {
             Button saveButton = (Button) translationRow.getChildren().get(2);
             Button copyButton = (Button) translationRow.getChildren().get(3);
             Button resetButton = (Button) translationRow.getChildren().get(4);
+            Button deleteEmptyRowsButton = (Button) translationRow.getChildren().get(5);
+            Button undoButton = (Button) translationRow.getChildren().get(6);
+            Button redoButton = (Button) translationRow.getChildren().get(7);
             VBox contentPanel = (VBox) mainContent.getChildren().get(7);
             VBox versePreviewBox = assertInstanceOf(VBox.class, contentPanel.getChildren().get(1));
             HBox footerRow = (HBox) mainContent.getChildren().get(8);
@@ -125,12 +128,18 @@ class MainViewFactoryTest {
             assertTrue(copyButton.isDisable());
             assertTrue(firstRangeCopyButton.isDisable());
             assertTrue(firstRemoveButton.isDisable());
+            assertTrue(deleteEmptyRowsButton.isDisable());
+            assertTrue(undoButton.isDisable());
+            assertTrue(redoButton.isDisable());
             assertTrue(instructionsLabel.getText().contains("saját sorukban másolhatod"));
             assertTrue(assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText().contains("Válassz fordítást"));
             assertTrue(addRangeButton.getTooltip().getText().contains("Numpad +"));
             assertEquals("Az aktuális munkamenet mentése (Ctrl+S)", saveButton.getTooltip().getText());
             assertEquals("Az összes kész szakasz másolása a vágólapra (Ctrl+C)", copyButton.getTooltip().getText());
             assertEquals("Az összes kijelölés alaphelyzetbe állítása (Ctrl+R)", resetButton.getTooltip().getText());
+            assertEquals("Az összes üres szakaszsor törlése", deleteEmptyRowsButton.getTooltip().getText());
+            assertEquals("Az utolsó művelet visszavonása (Ctrl+Z)", undoButton.getTooltip().getText());
+            assertEquals("A visszavont művelet ismétlése (Ctrl+Y)", redoButton.getTooltip().getText());
             assertEquals("Csak ennek a szakasznak a másolása a vágólapra", firstRangeCopyButton.getTooltip().getText());
             assertTrue(tutorialButton.getTooltip().getText().contains("Gyors kezdési útmutató"));
             assertEquals(MainViewFactory.APPLICATION_TITLE, titleLabel.getTooltip().getText());
@@ -143,7 +152,7 @@ class MainViewFactoryTest {
             assertTrue(versionLabel.getStyle().contains("11px"));
             assertTrue(translationRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
             assertTrue(translationBox.getStyle().contains("#355C8A"));
-            assertTrue(firstRangeRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
+            assertTrue(firstRangeRow.getStyle().contains("#0F766E"));
             assertTrue(contentPanel.getStyle().contains("#355C8A"));
             assertEquals(javafx.geometry.Pos.CENTER_RIGHT, footerRow.getAlignment());
 
@@ -181,17 +190,17 @@ class MainViewFactoryTest {
             assertEquals(5, firstToVerseBox.getItems().get(2));
 
             firstFromVerseBox.setValue(4);
-            assertEquals("A(z) 1. szakaszhoz válassz záró verset, amely nem kisebb a kezdő versnél.", firstRangeStatus.getText());
-            assertTrue(copyButton.isDisable());
-            assertTrue(firstRangeCopyButton.isDisable());
+            assertEquals(4, firstToVerseBox.getValue());
+            assertEquals("A(z) 1. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", firstRangeStatus.getText());
+            assertFalse(copyButton.isDisable());
+            assertFalse(firstRangeCopyButton.isDisable());
+            assertFalse(undoButton.isDisable());
 
             firstChapterBox.setValue(null);
             assertEquals("A(z) 1. szakaszhoz válassz fejezetet.", firstRangeStatus.getText());
 
             firstChapterBox.setValue(4);
             firstFromVerseBox.setValue(4);
-
-            firstToVerseBox.setValue(4);
             assertEquals("A(z) 1. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", firstRangeStatus.getText());
             assertFalse(copyButton.isDisable());
             assertFalse(firstRangeCopyButton.isDisable());
@@ -215,6 +224,20 @@ class MainViewFactoryTest {
             assertTrue(copyButton.isDisable());
             assertEquals(2, rangeSelectionsBox.getChildren().size());
             assertFalse(firstRemoveButton.isDisable());
+            assertFalse(deleteEmptyRowsButton.isDisable());
+            assertTrue(firstRangeRow.getStyle().contains("rgba(255, 255, 255, 0.14)"));
+
+            deleteEmptyRowsButton.fire();
+            assertEquals(1, rangeSelectionsBox.getChildren().size());
+            assertEquals("1 üres szakaszsor törölve.", statusLabel.getText());
+            assertTrue(firstRemoveButton.isDisable());
+            assertTrue(deleteEmptyRowsButton.isDisable());
+            assertTrue(firstRangeRow.getStyle().contains("#0F766E"));
+
+            root.fireEvent(ctrlShortcutEvent(KeyCode.Z));
+            assertEquals("A legutóbbi művelet visszavonva.", statusLabel.getText());
+            assertEquals(2, rangeSelectionsBox.getChildren().size());
+            assertFalse(deleteEmptyRowsButton.isDisable());
 
             HBox secondRangeRow = (HBox) rangeSelectionsBox.getChildren().get(1);
             Label secondRangeLabel = (Label) secondRangeRow.getChildren().getFirst();
@@ -233,12 +256,16 @@ class MainViewFactoryTest {
             assertEquals("Zsoltárok", secondBookBox.getItems().get(2));
             assertTrue(secondRangeCopyButton.isDisable());
             assertFalse(secondRangeRow.getChildren().get(11).isVisible());
+            assertTrue(secondRangeRow.getStyle().contains("#0F766E"));
 
             secondBookBox.setValue("Zsoltárok");
             assertEquals("A(z) 2. szakaszban a könyv kiválasztva. Válassz fejezetet.", secondRangeStatus.getText());
             secondChapterBox.setValue(23);
             assertEquals("A(z) 2. szakaszhoz válaszd ki a kezdő és záró verset.", secondRangeStatus.getText());
             secondFromVerseBox.setValue(1);
+            assertEquals(1, secondToVerseBox.getValue());
+            secondToVerseBox.setValue(null);
+            assertEquals(1, secondToVerseBox.getValue());
             secondToVerseBox.setValue(2);
             secondToVerseBox.setValue(1);
             secondFromVerseBox.setValue(2);
@@ -263,12 +290,14 @@ class MainViewFactoryTest {
             assertNull(secondToVerseBox.getValue());
             assertEquals("A(z) 2. szakasz alaphelyzetbe állítva. Válassz könyvet.", secondRangeStatus.getText());
             assertTrue(copyButton.isDisable());
+            assertFalse(deleteEmptyRowsButton.isDisable());
 
             secondBookBox.setValue("Zsoltárok");
             secondChapterBox.setValue(23);
             secondFromVerseBox.setValue(1);
             secondToVerseBox.setValue(2);
             assertFalse(copyButton.isDisable());
+            assertTrue(deleteEmptyRowsButton.isDisable());
 
             saveButton.fire();
             verify(uiSessionService).saveSession(new AppSessionSnapshot(
@@ -306,12 +335,55 @@ class MainViewFactoryTest {
             secondRemoveButton.fire();
             assertEquals(1, rangeSelectionsBox.getChildren().size());
             assertFalse(copyButton.isDisable());
+            assertTrue(deleteEmptyRowsButton.isDisable());
+            assertFalse(undoButton.isDisable());
+            assertTrue(redoButton.isDisable());
+
+            root.fireEvent(ctrlShortcutEvent(KeyCode.Z));
+            assertEquals("A legutóbbi művelet visszavonva.", statusLabel.getText());
+            assertEquals(2, rangeSelectionsBox.getChildren().size());
+            HBox restoredSecondRangeRow = (HBox) rangeSelectionsBox.getChildren().get(1);
+            ComboBox<String> restoredSecondBookBox = comboBox(restoredSecondRangeRow, 0);
+            ComboBox<Integer> restoredSecondChapterBox = comboBox(restoredSecondRangeRow, 1);
+            ComboBox<Integer> restoredSecondFromVerseBox = comboBox(restoredSecondRangeRow, 2);
+            ComboBox<Integer> restoredSecondToVerseBox = comboBox(restoredSecondRangeRow, 3);
+            assertEquals("Zsoltárok", restoredSecondBookBox.getValue());
+            assertEquals(23, restoredSecondChapterBox.getValue());
+            assertEquals(1, restoredSecondFromVerseBox.getValue());
+            assertEquals(2, restoredSecondToVerseBox.getValue());
+            assertTrue(restoredSecondRangeRow.getStyle().contains("#0F766E"));
+            assertFalse(redoButton.isDisable());
+
+            root.fireEvent(ctrlShortcutEvent(KeyCode.Y));
+            assertEquals("A visszavont művelet ismét végrehajtva.", statusLabel.getText());
+            assertEquals(1, rangeSelectionsBox.getChildren().size());
+            assertTrue(redoButton.isDisable());
 
             root.fireEvent(ctrlShortcutEvent(KeyCode.R));
             assertNull(translationBox.getValue());
             assertTrue(addRangeButton.isDisable());
             assertTrue(copyButton.isDisable());
+            assertTrue(deleteEmptyRowsButton.isDisable());
             assertEquals(MainViewFactory.INITIAL_STATUS_MESSAGE, statusLabel.getText());
+            assertEquals(1, rangeSelectionsBox.getChildren().size());
+
+            undoButton.fire();
+            assertEquals("A legutóbbi művelet visszavonva.", statusLabel.getText());
+            assertEquals("Revideált Károli", translationBox.getValue());
+            assertEquals(1, rangeSelectionsBox.getChildren().size());
+            HBox restoredFirstRangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            ComboBox<String> restoredFirstBookBox = comboBox(restoredFirstRangeRow, 0);
+            ComboBox<Integer> restoredFirstChapterBox = comboBox(restoredFirstRangeRow, 1);
+            ComboBox<Integer> restoredFirstFromVerseBox = comboBox(restoredFirstRangeRow, 2);
+            ComboBox<Integer> restoredFirstToVerseBox = comboBox(restoredFirstRangeRow, 3);
+            assertEquals("1. Mózes", restoredFirstBookBox.getValue());
+            assertEquals(4, restoredFirstChapterBox.getValue());
+            assertEquals(4, restoredFirstFromVerseBox.getValue());
+            assertEquals(4, restoredFirstToVerseBox.getValue());
+
+            redoButton.fire();
+            assertEquals("A visszavont művelet ismét végrehajtva.", statusLabel.getText());
+            assertNull(translationBox.getValue());
             assertEquals(1, rangeSelectionsBox.getChildren().size());
 
             saveButton.fire();
@@ -454,6 +526,45 @@ class MainViewFactoryTest {
     }
 
     @Test
+    void createRootDeleteEmptyRowsKeepsOneEmptyRowWhenAllRowsAreEmpty() {
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        when(uiSessionService.loadSession()).thenReturn(Optional.empty());
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 4, 4, "Ábel is vitt elsőszülött juhai közül.")
+        )), uiSessionService);
+
+        FxTestSupport.runOnFxThread(() -> {
+            Parent parent = mainViewFactory.createRoot();
+            BorderPane root = (BorderPane) parent;
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+            Label statusLabel = (Label) mainContent.getChildren().get(6);
+
+            ComboBox<String> translationBox = comboBox(translationRow, 0);
+            Button deleteEmptyRowsButton = (Button) translationRow.getChildren().get(5);
+
+            translationBox.setValue("Revideált Károli");
+            root.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "+", "+", KeyCode.ADD, false, false, false, false));
+            root.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "+", "+", KeyCode.ADD, false, false, false, false));
+
+            assertEquals(3, rangeSelectionsBox.getChildren().size());
+            assertFalse(deleteEmptyRowsButton.isDisable());
+
+            deleteEmptyRowsButton.fire();
+
+            assertEquals(1, rangeSelectionsBox.getChildren().size());
+            HBox remainingRangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            Button remainingRemoveButton = (Button) remainingRangeRow.getChildren().get(9);
+            assertEquals("2 üres szakaszsor törölve.", statusLabel.getText());
+            assertTrue(remainingRangeRow.getStyle().contains("#0F766E"));
+            assertTrue(remainingRemoveButton.isDisable());
+            assertTrue(deleteEmptyRowsButton.isDisable());
+            return null;
+        });
+    }
+
+    @Test
     void createRootShowsNoDisplayableVerseMessageForCompletedRangeWithoutResults() {
         UiSessionService uiSessionService = mock(UiSessionService.class);
         when(uiSessionService.loadSession()).thenReturn(Optional.empty());
@@ -548,20 +659,31 @@ class MainViewFactoryTest {
         assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+S"));
         assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+C"));
         assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+R"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+Z"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Ctrl+Y"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("Üres sorok törlése"));
         assertTrue(mainViewFactory.generalHelpContentText().contains("Útmutató gomb"));
         assertTrue(mainViewFactory.generalHelpContentText().contains("saját Másolás gombot kap"));
+        assertTrue(mainViewFactory.generalHelpContentText().contains("automatikusan ugyanaz lesz"));
         assertTrue(mainViewFactory.generalHelpContentText().contains("buboréksúgóban"));
         assertTrue(mainViewFactory.tutorialContentText().contains("Gyors kezdés"));
         assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+S"));
         assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+C"));
         assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+R"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+Z"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Ctrl+Y"));
+        assertTrue(mainViewFactory.tutorialContentText().contains("Üres sorok törlése"));
         assertTrue(mainViewFactory.tutorialContentText().contains("saját Másolás gombját"));
         assertTrue(mainViewFactory.translationHelpContentText().contains("numerikus billentyűzet + gombja"));
         assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+S"));
         assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+C"));
         assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+R"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+Z"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("Ctrl+Y"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("legalább egy sort mindig megtart"));
         assertTrue(mainViewFactory.translationHelpContentText().contains("egyedi szakaszmásoláshoz"));
         assertTrue(mainViewFactory.rangeHelpContentText().contains("↺ gomb"));
+        assertTrue(mainViewFactory.rangeHelpContentText().contains("automatikusan ugyanarra a versre állítja"));
         assertTrue(mainViewFactory.rangeHelpContentText().contains("buboréksúgóban"));
         assertEquals("A(z) 3. szakaszhoz válaszd ki a kezdő és záró verset.", MainViewFactory.rangeSelectionStatus(3, null, null));
         assertEquals("A(z) 3. szakaszhoz válassz kezdő verset, amely nem nagyobb a záró versnél.", MainViewFactory.rangeSelectionStatus(3, null, 5));
@@ -651,6 +773,61 @@ class MainViewFactoryTest {
         when(alert.showAndWait()).thenReturn(Optional.empty());
 
         assertEquals(fallbackButton, mainViewFactory.showConfirmationDialogAndWait(alert, fallbackButton));
+    }
+
+    @Test
+    void privateUndoRedoHelpersReturnImmediatelyWhenHistoryIsEmpty() throws Exception {
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
+        Class<?> historyManagerClass = Class.forName("hu.szegedibibliaszol.app.ui.MainViewFactory$UiHistoryManager");
+        var historyManagerConstructor = historyManagerClass.getDeclaredConstructor();
+        historyManagerConstructor.setAccessible(true);
+        Object historyManager = historyManagerConstructor.newInstance();
+
+        FxTestSupport.runOnFxThread(() -> {
+            Button undoButton = new Button("Vissza");
+            Button redoButton = new Button("Előre");
+            ComboBox<String> translationBox = new ComboBox<>();
+            Button addRangeButton = new Button("+");
+            VBox rangeSelectionsBox = new VBox();
+            Label statusLabel = new Label("Eredeti állapot");
+            List<Object> rangeSelections = new java.util.ArrayList<>();
+            Runnable refreshCopyState = () -> statusLabel.setText("Nem szabad futnia");
+            Runnable recordUndoableChange = () -> statusLabel.setText("Nem szabad futnia");
+
+            assertDoesNotThrow(() -> invokePrivate(
+                    mainViewFactory,
+                    "handleUndo",
+                    new Class<?>[]{historyManagerClass, Button.class, Button.class, ComboBox.class, Button.class, VBox.class, List.class, Label.class, Runnable.class, Runnable.class},
+                    historyManager,
+                    undoButton,
+                    redoButton,
+                    translationBox,
+                    addRangeButton,
+                    rangeSelectionsBox,
+                    rangeSelections,
+                    statusLabel,
+                    refreshCopyState,
+                    recordUndoableChange
+            ));
+            assertDoesNotThrow(() -> invokePrivate(
+                    mainViewFactory,
+                    "handleRedo",
+                    new Class<?>[]{historyManagerClass, Button.class, Button.class, ComboBox.class, Button.class, VBox.class, List.class, Label.class, Runnable.class, Runnable.class},
+                    historyManager,
+                    undoButton,
+                    redoButton,
+                    translationBox,
+                    addRangeButton,
+                    rangeSelectionsBox,
+                    rangeSelections,
+                    statusLabel,
+                    refreshCopyState,
+                    recordUndoableChange
+            ));
+
+            assertEquals("Eredeti állapot", statusLabel.getText());
+            return null;
+        });
     }
 
     @Test
@@ -859,10 +1036,11 @@ class MainViewFactoryTest {
             fromVerseBox.getEditor().setText("10");
             assertEquals(10, fromVerseBox.getValue());
             assertEquals(List.of(1, 10), nonNullItems(fromVerseBox));
+            assertEquals(10, toVerseBox.getValue());
 
             toVerseBox.getEditor().setText("2");
-            assertNull(toVerseBox.getValue());
-            assertEquals("", toVerseBox.getEditor().getText());
+            assertEquals(10, toVerseBox.getValue());
+            assertEquals("10", toVerseBox.getEditor().getText());
 
             toVerseBox.getEditor().setText("10");
             assertEquals(10, toVerseBox.getValue());
@@ -950,26 +1128,37 @@ class MainViewFactoryTest {
                 stage.close();
             }
 
-            Object rangeSelection = invokePrivate(mainViewFactory, "createRangeSelectionControls", new Class<?>[]{Runnable.class}, (Runnable) () -> {
-            });
+            Object rangeSelection = invokePrivate(
+                    mainViewFactory,
+                    "createRangeSelectionControls",
+                    new Class<?>[]{Runnable.class, Runnable.class},
+                    (Runnable) () -> {
+                    },
+                    (Runnable) () -> {
+                    }
+            );
             Class<?> rangeSelectionClass = rangeSelection.getClass();
 
             invokePrivate(
                     mainViewFactory,
                     "handleBookSelectionChange",
-                    new Class<?>[]{rangeSelectionClass, String.class, String.class, Runnable.class},
+                    new Class<?>[]{rangeSelectionClass, String.class, String.class, Runnable.class, Runnable.class},
                     rangeSelection,
                     null,
                     "1. Mózes",
+                    (Runnable) () -> {
+                    },
                     (Runnable) () -> {
                     }
             );
             invokePrivate(
                     mainViewFactory,
                     "handleChapterSelectionChange",
-                    new Class<?>[]{rangeSelectionClass, Integer.class, Runnable.class},
+                    new Class<?>[]{rangeSelectionClass, Integer.class, Runnable.class, Runnable.class},
                     rangeSelection,
                     4,
+                    (Runnable) () -> {
+                    },
                     (Runnable) () -> {
                     }
             );
@@ -1007,13 +1196,13 @@ class MainViewFactoryTest {
             chapterBox.setValue(1);
             fromVerseBox.setValue(4);
 
-            assertTrue(copyButton.isDisable());
+            assertFalse(copyButton.isDisable());
 
             toVerseBox.getEditor().setText("2");
 
-            assertEquals("", toVerseBox.getEditor().getText());
-            assertNull(toVerseBox.getValue());
-            assertTrue(copyButton.isDisable());
+            assertEquals("4", toVerseBox.getEditor().getText());
+            assertEquals(4, toVerseBox.getValue());
+            assertFalse(copyButton.isDisable());
             return null;
         });
     }
