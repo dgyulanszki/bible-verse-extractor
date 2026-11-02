@@ -1,6 +1,7 @@
 package hu.szegedibibliaszol.app.ui;
 
 import hu.szegedibibliaszol.app.ApplicationVersion;
+import hu.szegedibibliaszol.app.service.TranslationUsageService;
 import hu.szegedibibliaszol.app.service.UiSessionService;
 import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.ui.model.AppSessionSnapshot;
@@ -11,10 +12,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -42,7 +45,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class MainViewFactory {
 
-    public static final String APPLICATION_TITLE = "Bibliai igeeszköz";
+    public static final String APPLICATION_TITLE = "Biblia könyvtár";
     static final String INITIAL_STATUS_MESSAGE = "Válassz fordítást a közös bibliaadatbázisból való igerészletek összeállításához.";
     static final String GENERAL_HELP_HEADER_TEXT = "Általános súgó";
     static final String TUTORIAL_HEADER_TEXT = "Gyors útmutató";
@@ -67,16 +70,27 @@ public class MainViewFactory {
 
     private final VerseBrowserService verseBrowserService;
     private final UiSessionService uiSessionService;
+    private final TranslationUsageService translationUsageService;
 
     private ComboBox<String> activeTranslationBox;
     private Label activeStatusLabel;
+    private Node viewportAnchorNode;
     private List<RangeSelectionControls> activeRangeSelections = List.of();
     private boolean suppressTranslationChangeHandling;
 
     @Autowired
-    public MainViewFactory(VerseBrowserService verseBrowserService, UiSessionService uiSessionService) {
+    public MainViewFactory(
+            VerseBrowserService verseBrowserService,
+            UiSessionService uiSessionService,
+            TranslationUsageService translationUsageService
+    ) {
         this.verseBrowserService = verseBrowserService;
         this.uiSessionService = uiSessionService;
+        this.translationUsageService = translationUsageService;
+    }
+
+    MainViewFactory(VerseBrowserService verseBrowserService, UiSessionService uiSessionService) {
+        this(verseBrowserService, uiSessionService, TranslationUsageService.noop());
     }
 
     MainViewFactory(VerseBrowserService verseBrowserService) {
@@ -149,10 +163,13 @@ public class MainViewFactory {
         bindLabelTooltip(statusLabel);
 
         Runnable refreshSelectionState = () -> {
+            double scrollPixels = captureScrollPixels(mainScrollPane);
             copyButton.setDisable(!isCopyReady(translationBox.getValue(), rangeSelections));
             refreshDeleteEmptyRowsButton(deleteEmptyRowsButton, rangeSelections);
             refreshRangeCopyButtons(translationBox.getValue(), rangeSelections);
             refreshVersePreview(translationBox.getValue(), rangeSelections, versePreviewBox);
+            restoreScrollPixels(mainScrollPane, scrollPixels);
+            anchorViewportOnNode(mainScrollPane, viewportAnchorNode);
         };
         Runnable recordUndoableChange = () -> historyManager.recordSnapshotChange(currentSessionSnapshot(), undoButton, redoButton);
         rebuildRangeSelections(rangeSelectionsBox, rangeSelections, refreshSelectionState, recordUndoableChange);
@@ -188,11 +205,11 @@ public class MainViewFactory {
                     rangeSelection.suppressSelectionChangeHandling = false;
                 }
             }
+            viewportAnchorNode = rangeSelection.container;
             refreshRangeSelectionPresentation(rangeSelections);
             refreshSelectionState.run();
             statusLabel.setText("Új szakasz hozzáadva. Válassz könyvet.");
             recordUndoableChange.run();
-            mainScrollPane.setVvalue(1.0);
         });
 
         saveButton.setOnAction(_ -> {
@@ -215,6 +232,7 @@ public class MainViewFactory {
                     ))
                     .toList();
             copyTextToClipboard(formatVerseRangesText(formattedRanges));
+            translationUsageService.recordUse(translationBox.getValue());
             statusLabel.setText("A kijelölt szakaszok a vágólapra kerültek.");
         });
 
@@ -330,7 +348,18 @@ public class MainViewFactory {
 
         HBox.setHgrow(translationBox, Priority.ALWAYS);
 
-        restoreSavedSession(translationBox, addRangeButton, rangeSelectionsBox, rangeSelections, statusLabel, refreshSelectionState, recordUndoableChange);
+        boolean savedSessionHandled = restoreSavedSession(
+                translationBox,
+                addRangeButton,
+                rangeSelectionsBox,
+                rangeSelections,
+                statusLabel,
+                refreshSelectionState,
+                recordUndoableChange
+        );
+        if (!savedSessionHandled) {
+            applyPreferredTranslationIfNeeded(translationBox, addRangeButton, rangeSelections, statusLabel, refreshSelectionState);
+        }
         refreshSelectionState.run();
         historyManager.initialize(currentSessionSnapshot(), undoButton, redoButton);
         return root;
@@ -401,6 +430,7 @@ public class MainViewFactory {
                 - A Vissza és Előre gombok, illetve a Ctrl+Z és Ctrl+Y billentyűparancsok a legutóbbi állapotokat kezelik.
                 - Az Alaphelyzet gomb vagy a Ctrl+R billentyűparancs törli az aktuális kijelöléseket.
                 - A fordítás módosítását a program megerősítteti, ha már van kitöltött alsó szintű választás.
+                - A legtöbbször másolt fordítás új munkamenetben előre ki van választva. A lista sorrendje ettől nem változik.
                 """;
     }
 
@@ -410,6 +440,7 @@ public class MainViewFactory {
                 - A legördülők első eleme a kiürített, alapértelmezett állapot.
                 - A ↺ gomb csak az adott sort állítja vissza alaphelyzetbe.
                 - A kezdő és záró vers lehet ugyanaz is.
+                - Ha fejezetet választasz, a kezdő vers a fejezet első versére, a záró vers pedig az utolsóra áll, így a teljes fejezet azonnal kijelölődik.
                 - Ha a kezdő verset kitöltöd, de a záró vers üres, a program automatikusan ugyanarra a versre állítja.
                 - A könyv módosítását a program megerősítteti, ha a sorban már van fejezet- vagy versválasztás.
                 - A - gomb eltávolítja az adott szakaszsort.
@@ -588,7 +619,7 @@ public class MainViewFactory {
 
     private VBox createContentPanel(VBox versePreviewBox) {
         Label instructionsLabel = new Label(
-                "Ebben a nézetben a kijelölt szakaszok versei jelennek meg. A fenti vezérlőkkel állítsd össze a kívánt szakaszokat, majd a teljes blokkot felül, az egyes szakaszokat pedig a saját sorukban másolhatod."
+                "Ebben a nézetben csak a kijelölt szakaszok rövid hivatkozásai jelennek meg, például 1Mózes 4:4-5. A teljes versszöveget a Másolás gombokkal, a teljes blokkot felül, az egyes szakaszokat pedig a saját sorukban másolhatod."
         );
         instructionsLabel.setWrapText(true);
         instructionsLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
@@ -612,7 +643,7 @@ public class MainViewFactory {
         versePreviewBox.getChildren().clear();
         if (translation == null) {
             versePreviewBox.getChildren().add(createPreviewPlaceholderLabel(
-                    "Válassz fordítást, és a kijelölt versek itt jelennek meg szakaszonként csoportosítva."
+                    "Válassz fordítást, és a kijelölt szakaszok itt jelennek meg rövid hivatkozásként."
             ));
             return;
         }
@@ -623,31 +654,15 @@ public class MainViewFactory {
                 continue;
             }
             hasReadyRange = true;
-            List<VerseRow> verseRows = verseBrowserService.findVerseRange(
-                    translation,
-                    rangeSelection.bookBox.getValue(),
-                    rangeSelection.chapterBox.getValue(),
-                    rangeSelection.fromVerseBox.getValue(),
-                    rangeSelection.toVerseBox.getValue()
-            );
-            if (verseRows.isEmpty()) {
-                continue;
-            }
-
-            Label rangeHeader = new Label(rangeHeaderText(rangeSelection));
-            rangeHeader.setStyle("-fx-font-weight: bold; -fx-text-fill: " + DEEP_BLUE + ";");
-            bindLabelTooltip(rangeHeader);
-            versePreviewBox.getChildren().add(rangeHeader);
-
-            for (VerseRow verseRow : verseRows) {
-                versePreviewBox.getChildren().add(createVersePreviewRow(verseRow));
-            }
+            Label rangeSummary = new Label(compactRangeSummary(rangeSelection));
+            rangeSummary.setStyle("-fx-font-weight: bold; -fx-text-fill: " + DEEP_BLUE + ";");
+            bindLabelTooltip(rangeSummary);
+            versePreviewBox.getChildren().add(rangeSummary);
         }
 
-        if (versePreviewBox.getChildren().isEmpty()) {
-            versePreviewBox.getChildren().add(createPreviewPlaceholderLabel(hasReadyRange
-                    ? "A kijelölt szakaszokhoz jelenleg nem található megjeleníthető vers."
-                    : "A kiválasztott szakaszok versei itt jelennek meg, amikor elkészülsz a kijelöléssel."
+        if (!hasReadyRange) {
+            versePreviewBox.getChildren().add(createPreviewPlaceholderLabel(
+                    "A kiválasztott szakaszok rövid hivatkozásai itt jelennek meg, amikor elkészülsz a kijelöléssel."
             ));
         }
     }
@@ -664,22 +679,6 @@ public class MainViewFactory {
         placeholderLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
         bindLabelTooltip(placeholderLabel);
         return placeholderLabel;
-    }
-
-    private VBox createVersePreviewRow(VerseRow verseRow) {
-        Label referenceLabel = new Label(formatVerseReference(verseRow));
-        referenceLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: " + DEEP_BLUE + ";");
-        bindLabelTooltip(referenceLabel);
-
-        Label verseTextLabel = new Label(verseRow.text());
-        verseTextLabel.setWrapText(true);
-        verseTextLabel.setStyle("-fx-text-fill: " + DEEP_BLUE + ";");
-        bindLabelTooltip(verseTextLabel);
-
-        VBox versePreviewRow = new VBox(2, referenceLabel, verseTextLabel);
-        versePreviewRow.setPadding(new Insets(8));
-        versePreviewRow.setStyle("-fx-background-color: rgba(53, 92, 138, 0.08); -fx-background-radius: 10;");
-        return versePreviewRow;
     }
 
     private void copyRangeSelection(RangeSelectionControls rangeSelection) {
@@ -702,6 +701,7 @@ public class MainViewFactory {
                 rangeSelection.fromVerseBox.getValue(),
                 rangeSelection.toVerseBox.getValue()
         ));
+        translationUsageService.recordUse(activeTranslationBox.getValue());
         activeStatusLabel.setText("A kijelölt szakasz a vágólapra került: " + rangeHeaderText(rangeSelection) + ".");
     }
 
@@ -757,7 +757,7 @@ public class MainViewFactory {
         Clipboard.getSystemClipboard().setContent(clipboardContent);
     }
 
-    private void restoreSavedSession(
+    private boolean restoreSavedSession(
             ComboBox<String> translationBox,
             Button addRangeButton,
             VBox rangeSelectionsBox,
@@ -768,7 +768,7 @@ public class MainViewFactory {
     ) {
         Optional<AppSessionSnapshot> savedSession = uiSessionService.loadSession();
         if (savedSession.isEmpty() || savedSession.get().isEmpty()) {
-            return;
+            return false;
         }
 
         AppSessionSnapshot sessionSnapshot = savedSession.get();
@@ -776,7 +776,7 @@ public class MainViewFactory {
         if (savedTranslation == null || !translationBox.getItems().contains(savedTranslation)) {
             applyTranslationSelection(null, rangeSelections, addRangeButton, statusLabel, refreshCopyState);
             statusLabel.setText("A mentett fordítás már nem érhető el, ezért a munkamenet alaphelyzetből indult.");
-            return;
+            return true;
         }
 
         int desiredRangeCount = Math.max(1, sessionSnapshot.ranges().size());
@@ -793,6 +793,90 @@ public class MainViewFactory {
         }
         refreshCopyState.run();
         statusLabel.setText("Az előző munkamenet automatikusan betöltődött.");
+        return true;
+    }
+
+    private void applyPreferredTranslationIfNeeded(
+            ComboBox<String> translationBox,
+            Button addRangeButton,
+            List<RangeSelectionControls> rangeSelections,
+            Label statusLabel,
+            Runnable refreshCopyState
+    ) {
+        if (translationBox.getValue() != null) {
+            return;
+        }
+        Optional<String> preferredTranslation = translationUsageService.preferredTranslation();
+        if (preferredTranslation.isEmpty() || !translationBox.getItems().contains(preferredTranslation.get())) {
+            return;
+        }
+        suppressTranslationChangeHandling = true;
+        try {
+            translationBox.setValue(preferredTranslation.get());
+        } finally {
+            suppressTranslationChangeHandling = false;
+        }
+        applyTranslationSelection(preferredTranslation.get(), rangeSelections, addRangeButton, statusLabel, refreshCopyState);
+    }
+
+    double captureScrollPixels(ScrollPane scrollPane) {
+        Node content = scrollPane.getContent();
+        if (content == null) {
+            return 0;
+        }
+        double maxScroll = maxScrollPixels(scrollPane, content);
+        return scrollPane.getVvalue() * maxScroll;
+    }
+
+    void restoreScrollPixels(ScrollPane scrollPane, double scrollPixels) {
+        Node content = scrollPane.getContent();
+        if (content == null) {
+            return;
+        }
+        double maxScroll = maxScrollPixels(scrollPane, content);
+        if (maxScroll <= 0) {
+            scrollPane.setVvalue(0);
+            return;
+        }
+        scrollPane.setVvalue(Math.min(1.0, Math.max(0, scrollPixels / maxScroll)));
+    }
+
+    void applyViewportAnchor(ScrollPane scrollPane, Node anchorNode) {
+        Node content = scrollPane.getContent();
+        if (content == null || content.getScene() == null || anchorNode == null || anchorNode.getScene() == null) {
+            return;
+        }
+        scrollPane.applyCss();
+        scrollPane.layout();
+        Bounds rowBounds = content.sceneToLocal(anchorNode.localToScene(anchorNode.getBoundsInLocal()));
+        double viewportHeight = scrollPane.getViewportBounds().getHeight();
+        double contentHeight = content.getLayoutBounds().getHeight();
+        double maxScroll = contentHeight - viewportHeight;
+        if (maxScroll <= 1) {
+            scrollPane.setVvalue(0);
+            return;
+        }
+        double currentTop = scrollPane.getVvalue() * maxScroll;
+        boolean fullyVisible = rowBounds.getMinY() >= currentTop - 1
+                && rowBounds.getMaxY() <= currentTop + viewportHeight + 1;
+        if (fullyVisible) {
+            return;
+        }
+        double targetTop = Math.max(0, Math.min(rowBounds.getMinY() - 8, maxScroll));
+        scrollPane.setVvalue(targetTop / maxScroll);
+    }
+
+    private void anchorViewportOnNode(ScrollPane scrollPane, Node anchorNode) {
+        if (scrollPane == null || anchorNode == null) {
+            return;
+        }
+        Platform.runLater(() -> applyViewportAnchor(scrollPane, anchorNode));
+    }
+
+    private double maxScrollPixels(ScrollPane scrollPane, Node content) {
+        double viewportHeight = scrollPane.getViewportBounds().getHeight();
+        double contentHeight = content.getBoundsInLocal().getHeight();
+        return Math.max(0, contentHeight - viewportHeight);
     }
 
     private AppSessionSnapshot currentSessionSnapshot() {
@@ -895,6 +979,7 @@ public class MainViewFactory {
         setComboBoxItems(toVerseBox, List.of());
         copyButton.setOnAction(_ -> copyRangeSelection(rangeSelection));
         resetButton.setOnAction(_ -> {
+            viewportAnchorNode = rangeSelection.container;
             resetRangeSelection(
                     rangeSelection,
                     activeTranslationBox == null ? null : activeTranslationBox.getValue(),
@@ -982,7 +1067,7 @@ public class MainViewFactory {
             clearComboBox(rangeSelection.chapterBox);
             clearComboBox(rangeSelection.fromVerseBox);
             clearComboBox(rangeSelection.toVerseBox);
-            rangeSelection.availableVerses.set(List.of());
+            rangeSelection.availableVerses = List.of();
         } finally {
             rangeSelection.suppressSelectionChangeHandling = false;
         }
@@ -1006,7 +1091,7 @@ public class MainViewFactory {
                 clearComboBox(rangeSelection.chapterBox);
                 clearComboBox(rangeSelection.fromVerseBox);
                 clearComboBox(rangeSelection.toVerseBox);
-                rangeSelection.availableVerses.set(List.of());
+                rangeSelection.availableVerses = List.of();
             } finally {
                 rangeSelection.suppressSelectionChangeHandling = false;
             }
@@ -1034,7 +1119,7 @@ public class MainViewFactory {
             );
             clearComboBox(rangeSelection.fromVerseBox);
             clearComboBox(rangeSelection.toVerseBox);
-            rangeSelection.availableVerses.set(List.of());
+            rangeSelection.availableVerses = List.of();
         } finally {
             rangeSelection.suppressSelectionChangeHandling = false;
         }
@@ -1051,18 +1136,30 @@ public class MainViewFactory {
             Runnable refreshCopyState
     ) {
         if (chapter == null) {
-            rangeSelection.availableVerses.set(List.of());
+            rangeSelection.availableVerses = List.of();
             clearVerseRangeBoxes(rangeSelection);
             refreshCopyState.run();
             rangeSelection.statusLabel.setText("A(z) " + rangeSelection.displayIndex + ". szakaszhoz válassz fejezetet.");
             return;
         }
 
-        rangeSelection.availableVerses.set(List.copyOf(verseBrowserService.getVerses(
+        List<Integer> verses = List.copyOf(verseBrowserService.getVerses(
                 translation,
                 rangeSelection.bookBox.getValue(),
                 chapter
-        )));
+        ));
+        rangeSelection.availableVerses = verses;
+        if (!verses.isEmpty()) {
+            rangeSelection.suppressSelectionChangeHandling = true;
+            try {
+                updateComboBoxItems(rangeSelection.fromVerseBox, verses);
+                updateComboBoxItems(rangeSelection.toVerseBox, verses);
+                rangeSelection.fromVerseBox.setValue(verses.getFirst());
+                rangeSelection.toVerseBox.setValue(verses.getLast());
+            } finally {
+                rangeSelection.suppressSelectionChangeHandling = false;
+            }
+        }
         updateVerseRangeBoxes(rangeSelection, refreshCopyState);
     }
 
@@ -1076,6 +1173,7 @@ public class MainViewFactory {
         if (rangeSelection.suppressSelectionChangeHandling || Objects.equals(oldValue, newValue)) {
             return;
         }
+        viewportAnchorNode = rangeSelection.container;
         if (shouldConfirmBookChange(oldValue, newValue, rangeSelection)
                 && !showConfirmationDialog(
                 "Könyv módosítása",
@@ -1098,6 +1196,7 @@ public class MainViewFactory {
         if (rangeSelection.suppressSelectionChangeHandling) {
             return;
         }
+        viewportAnchorNode = rangeSelection.container;
         applyChapterSelection(rangeSelection, activeTranslationBox == null ? null : activeTranslationBox.getValue(), newValue, refreshCopyState);
         recordUndoableChange.run();
     }
@@ -1110,6 +1209,7 @@ public class MainViewFactory {
         if (rangeSelection.suppressSelectionChangeHandling) {
             return;
         }
+        viewportAnchorNode = rangeSelection.container;
         updateVerseRangeBoxes(rangeSelection, refreshCopyState);
         recordUndoableChange.run();
     }
@@ -1130,15 +1230,15 @@ public class MainViewFactory {
                             : verseBrowserService.getChapters(translation, rangeSelectionSnapshot.book())
             );
             selectIfAvailable(rangeSelection.chapterBox, rangeSelectionSnapshot.chapter());
-            rangeSelection.availableVerses.set(rangeSelectionSnapshot.chapter() == null
+            rangeSelection.availableVerses = rangeSelectionSnapshot.chapter() == null
                     ? List.of()
                     : List.copyOf(verseBrowserService.getVerses(
                     translation,
                     rangeSelectionSnapshot.book(),
                     rangeSelectionSnapshot.chapter()
-            )));
-            updateComboBoxItems(rangeSelection.fromVerseBox, rangeSelection.availableVerses.get());
-            updateComboBoxItems(rangeSelection.toVerseBox, rangeSelection.availableVerses.get());
+            ));
+            updateComboBoxItems(rangeSelection.fromVerseBox, rangeSelection.availableVerses);
+            updateComboBoxItems(rangeSelection.toVerseBox, rangeSelection.availableVerses);
             selectIfAvailable(rangeSelection.fromVerseBox, rangeSelectionSnapshot.fromVerse());
             selectIfAvailable(rangeSelection.toVerseBox, rangeSelectionSnapshot.toVerse());
         } finally {
@@ -1162,7 +1262,7 @@ public class MainViewFactory {
     }
 
     private void updateVerseRangeBoxes(RangeSelectionControls rangeSelection, Runnable refreshCopyState) {
-        List<Integer> availableVerses = rangeSelection.availableVerses.get();
+        List<Integer> availableVerses = rangeSelection.availableVerses;
         if (availableVerses.isEmpty()) {
             clearVerseRangeBoxes(rangeSelection);
             refreshCopyState.run();
@@ -1257,8 +1357,17 @@ public class MainViewFactory {
                 : rangeSelection.fromVerseBox.getValue() + "-" + rangeSelection.toVerseBox.getValue());
     }
 
-    private String formatVerseReference(VerseRow verseRow) {
-        return BookNameCanonicalizer.canonicalBookName(verseRow.book()) + " " + verseRow.chapter() + ":" + verseRow.verse();
+    private String compactRangeSummary(RangeSelectionControls rangeSelection) {
+        Integer fromVerse = rangeSelection.fromVerseBox.getValue();
+        Integer toVerse = rangeSelection.toVerseBox.getValue();
+        String versePart = Objects.equals(fromVerse, toVerse)
+                ? String.valueOf(fromVerse)
+                : fromVerse + "-" + toVerse;
+        return BookNameCanonicalizer.canonicalBookName(rangeSelection.bookBox.getValue())
+                + " "
+                + rangeSelection.chapterBox.getValue()
+                + ":"
+                + versePart;
     }
 
     private boolean isCopyReady(String translation, List<RangeSelectionControls> rangeSelections) {
@@ -1649,7 +1758,7 @@ public class MainViewFactory {
         private final Button removeButton;
         private final Button helpButton;
         private final Label statusLabel;
-        private final AtomicReference<List<Integer>> availableVerses = new AtomicReference<>(List.of());
+        private List<Integer> availableVerses = List.of();
         private boolean suppressSelectionChangeHandling;
         private int displayIndex;
 

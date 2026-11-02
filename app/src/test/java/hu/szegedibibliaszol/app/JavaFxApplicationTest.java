@@ -1,5 +1,8 @@
 package hu.szegedibibliaszol.app;
 
+import hu.szegedibibliaszol.app.service.TranslationUsageService;
+import hu.szegedibibliaszol.app.service.UiSessionService;
+import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.testutil.FxTestSupport;
 import hu.szegedibibliaszol.app.ui.MainViewFactory;
 import java.io.ByteArrayInputStream;
@@ -9,10 +12,17 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javafx.application.Platform;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -21,6 +31,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -37,13 +48,30 @@ class JavaFxApplicationTest {
     }
 
     @Test
-    void initUsesCreateApplicationContext() {
-        ConfigurableApplicationContext applicationContext = mock(ConfigurableApplicationContext.class);
-        TestJavaFxApplication javaFxApplication = new TestJavaFxApplication(applicationContext);
+    void startWithoutContextShowsLoadingSceneAndDefersSpringStartup() {
+        AtomicInteger backgroundStarts = new AtomicInteger();
+        JavaFxApplication javaFxApplication = new JavaFxApplication() {
+            @Override
+            void beginContextInitialization(Stage stage) {
+                backgroundStarts.incrementAndGet();
+            }
+        };
 
-        javaFxApplication.init();
+        FxTestSupport.runOnFxThread(() -> {
+            Stage stage = new Stage();
+            javaFxApplication.start(stage);
+            Label loadingLabel = (Label) ((StackPane) stage.getScene().getRoot()).getChildren().getFirst();
 
-        assertEquals(1, javaFxApplication.createContextCalls);
+            assertEquals(MainViewFactory.APPLICATION_TITLE, stage.getTitle());
+            assertTrue(stage.isShowing());
+            assertTrue(stage.isMaximized());
+            assertTrue(loadingLabel.getText().contains("betöltése"));
+            assertEquals(1, backgroundStarts.get());
+            javaFxApplication.ensureApplicationIcon(stage);
+            assertEquals(1, stage.getIcons().size());
+            stage.close();
+            return null;
+        });
     }
 
     @Test
@@ -126,6 +154,7 @@ class JavaFxApplicationTest {
             javaFxApplication.start(stage);
             assertEquals(MainViewFactory.APPLICATION_TITLE, stage.getTitle());
             assertNotNull(stage.getScene());
+            assertTrue(stage.isMaximized());
             assertEquals(1, stage.getIcons().size());
             assertTrue(stage.getIcons().getFirst().getWidth() > 0);
             assertEquals(960, stage.getMinWidth());
@@ -133,6 +162,87 @@ class JavaFxApplicationTest {
             stage.close();
             return null;
         });
+    }
+
+    @Test
+    void sceneReplacementKeepsTheWindowMaximized() {
+        ConfigurableApplicationContext applicationContext = mock(ConfigurableApplicationContext.class);
+        MainViewFactory mainViewFactory = mock(MainViewFactory.class);
+        when(mainViewFactory.createRoot()).thenAnswer(_ -> new BorderPane());
+        when(applicationContext.getBean(MainViewFactory.class)).thenReturn(mainViewFactory);
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+        javaFxApplication.setContext(applicationContext);
+
+        Stage stage = FxTestSupport.runOnFxThread(() -> {
+            Stage loadingStage = new Stage();
+            javaFxApplication.prepareStage(loadingStage);
+            javaFxApplication.showSceneExpanded(loadingStage, javaFxApplication.createLoadingScene());
+            loadingStage.setMaximized(false);
+            javaFxApplication.installMainScene(loadingStage);
+            assertTrue(loadingStage.isMaximized());
+            return loadingStage;
+        });
+
+        for (int pulse = 0; pulse < 4; pulse++) {
+            FxTestSupport.waitForFxEvents();
+        }
+        FxTestSupport.runOnFxThread(() -> {
+            assertTrue(stage.isMaximized());
+            stage.close();
+            return null;
+        });
+    }
+
+    @Test
+    void startupMaximizedStateSurvivesSceneReplacementThenAllowsRestore() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+        Stage stage = FxTestSupport.runOnFxThread(() -> {
+            Stage shownStage = new Stage();
+            javaFxApplication.prepareStage(shownStage);
+            shownStage.setScene(javaFxApplication.createLoadingScene());
+            shownStage.show();
+            javaFxApplication.keepStartupWindowExpanded(shownStage);
+            shownStage.setMaximized(false);
+            return shownStage;
+        });
+
+        FxTestSupport.waitForFxEvents();
+        FxTestSupport.runOnFxThread(() -> {
+            assertTrue(stage.isMaximized());
+            return null;
+        });
+
+        for (int pulse = 0; pulse < 8; pulse++) {
+            FxTestSupport.waitForFxEvents();
+        }
+
+        FxTestSupport.runOnFxThread(() -> {
+            stage.setMaximized(false);
+            return null;
+        });
+        FxTestSupport.waitForFxEvents();
+        FxTestSupport.runOnFxThread(() -> {
+            assertFalse(stage.isMaximized());
+            stage.close();
+            return null;
+        });
+    }
+
+    @Test
+    void deferredMaximizeIsSkippedAfterTheStageIsClosed() {
+        JavaFxApplication javaFxApplication = new JavaFxApplication();
+
+        FxTestSupport.runOnFxThread(() -> {
+            Stage stage = new Stage();
+            stage.setScene(javaFxApplication.createLoadingScene());
+            stage.show();
+            javaFxApplication.keepStartupWindowExpanded(stage);
+            assertTrue(stage.isMaximized());
+            stage.close();
+            stage.setMaximized(false);
+            return null;
+        });
+        FxTestSupport.waitForFxEvents();
     }
 
     @Test
@@ -191,13 +301,112 @@ class JavaFxApplicationTest {
     }
 
     @Test
-    void startFailsWhenContextIsMissing() {
+    void installMainSceneFailsWhenContextIsMissing() {
         JavaFxApplication javaFxApplication = new JavaFxApplication();
 
         FxTestSupport.runOnFxThread(() -> {
             Stage stage = new Stage();
-            assertThrows(IllegalStateException.class, () -> javaFxApplication.start(stage));
+            IllegalStateException exception = assertThrows(IllegalStateException.class, () -> javaFxApplication.installMainScene(stage));
+            assertEquals("Application context is not initialized.", exception.getMessage());
             stage.close();
+            return null;
+        });
+    }
+
+    @Test
+    void backgroundStartupInstallsMainSceneAfterWarmingCaches() throws Exception {
+        ConfigurableApplicationContext applicationContext = mock(ConfigurableApplicationContext.class);
+        MainViewFactory mainViewFactory = mock(MainViewFactory.class);
+        VerseBrowserService verseBrowserService = mock(VerseBrowserService.class);
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        TranslationUsageService translationUsageService = mock(TranslationUsageService.class);
+        when(mainViewFactory.createRoot()).thenAnswer(_ -> new BorderPane());
+        when(applicationContext.getBean(MainViewFactory.class)).thenReturn(mainViewFactory);
+        when(applicationContext.getBean(VerseBrowserService.class)).thenReturn(verseBrowserService);
+        when(applicationContext.getBean(UiSessionService.class)).thenReturn(uiSessionService);
+        when(applicationContext.getBean(TranslationUsageService.class)).thenReturn(translationUsageService);
+        when(verseBrowserService.getTranslations()).thenReturn(List.of("Károli"));
+        when(uiSessionService.loadSession()).thenReturn(Optional.empty());
+        when(translationUsageService.preferredTranslation()).thenReturn(Optional.of("Károli"));
+        CountDownLatch startupFinished = new CountDownLatch(1);
+        JavaFxApplication javaFxApplication = new JavaFxApplication() {
+            @Override
+            ConfigurableApplicationContext createApplicationContext() {
+                return applicationContext;
+            }
+
+            @Override
+            void completeStartup(Stage stage, ConfigurableApplicationContext startedContext) {
+                super.completeStartup(stage, startedContext);
+                startupFinished.countDown();
+            }
+        };
+
+        Stage stage = FxTestSupport.runOnFxThread(() -> {
+            Stage loadingStage = new Stage();
+            javaFxApplication.beginContextInitialization(loadingStage);
+            return loadingStage;
+        });
+
+        assertTrue(startupFinished.await(5, TimeUnit.SECONDS));
+        verify(verseBrowserService).getTranslations();
+        verify(uiSessionService).loadSession();
+        verify(translationUsageService).preferredTranslation();
+        FxTestSupport.runOnFxThread(() -> {
+            javaFxApplication.installMainScene(stage);
+            stage.close();
+            return null;
+        });
+    }
+
+    @Test
+    void backgroundStartupShowsFailureAndIgnoresLateContextAfterStop() throws Exception {
+        CountDownLatch failureShown = new CountDownLatch(1);
+        JavaFxApplication failingApplication = new JavaFxApplication() {
+            @Override
+            ConfigurableApplicationContext createApplicationContext() {
+                throw new IllegalStateException("db down");
+            }
+
+            @Override
+            void showStartupFailure(Stage stage, Throwable failure) {
+                super.showStartupFailure(stage, failure);
+                failureShown.countDown();
+            }
+        };
+
+        Stage stage = FxTestSupport.runOnFxThread(() -> {
+            Stage loadingStage = new Stage();
+            failingApplication.beginContextInitialization(loadingStage);
+            return loadingStage;
+        });
+        assertTrue(failureShown.await(5, TimeUnit.SECONDS));
+        FxTestSupport.runOnFxThread(() -> {
+            Label failureLabel = (Label) ((StackPane) stage.getScene().getRoot()).getChildren().getFirst();
+            assertTrue(failureLabel.getText().contains("db down"));
+            stage.close();
+            return null;
+        });
+
+        ConfigurableApplicationContext lateContext = mock(ConfigurableApplicationContext.class);
+        JavaFxApplication stoppedApplication = new JavaFxApplication();
+        try (MockedStatic<Platform> platform = mockStatic(Platform.class)) {
+            stoppedApplication.stop();
+            platform.verify(Platform::exit);
+        }
+        FxTestSupport.runOnFxThread(() -> {
+            stoppedApplication.completeStartup(new Stage(), lateContext);
+            return null;
+        });
+        verify(lateContext).close();
+
+        FxTestSupport.runOnFxThread(() -> {
+            Stage blankFailureStage = new Stage();
+            stoppedApplication.showStartupFailure(blankFailureStage, new IllegalStateException(" "));
+            stoppedApplication.showStartupFailure(blankFailureStage, null);
+            Label failureLabel = (Label) ((StackPane) blankFailureStage.getScene().getRoot()).getChildren().getFirst();
+            assertEquals("Az alkalmazás indítása nem sikerült.", failureLabel.getText());
+            blankFailureStage.close();
             return null;
         });
     }
@@ -234,22 +443,6 @@ class JavaFxApplicationTest {
             javaFxApplication.stop();
 
             platform.verify(Platform::exit);
-        }
-    }
-
-    private static final class TestJavaFxApplication extends JavaFxApplication {
-
-        private final ConfigurableApplicationContext applicationContext;
-        private int createContextCalls;
-
-        private TestJavaFxApplication(ConfigurableApplicationContext applicationContext) {
-            this.applicationContext = applicationContext;
-        }
-
-        @Override
-        ConfigurableApplicationContext createApplicationContext() {
-            createContextCalls++;
-            return applicationContext;
         }
     }
 

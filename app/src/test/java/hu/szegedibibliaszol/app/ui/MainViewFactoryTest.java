@@ -1,6 +1,7 @@
 package hu.szegedibibliaszol.app.ui;
 
 import hu.szegedibibliaszol.app.ApplicationVersion;
+import hu.szegedibibliaszol.app.service.TranslationUsageService;
 import hu.szegedibibliaszol.app.service.UiSessionService;
 import hu.szegedibibliaszol.app.service.VerseBrowserService;
 import hu.szegedibibliaszol.app.testutil.FxTestSupport;
@@ -9,6 +10,7 @@ import hu.szegedibibliaszol.app.ui.model.RangeSelectionSnapshot;
 import hu.szegedibibliaszol.app.ui.model.VerseRow;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -178,7 +180,9 @@ class MainViewFactoryTest {
             assertEquals(4, firstChapterBox.getItems().get(1));
 
             firstChapterBox.setValue(4);
-            assertEquals("A(z) 1. szakaszhoz válaszd ki a kezdő és záró verset.", firstRangeStatus.getText());
+            assertEquals(4, firstFromVerseBox.getValue());
+            assertEquals(5, firstToVerseBox.getValue());
+            assertEquals("A(z) 1. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", firstRangeStatus.getText());
             assertEquals("Kiválasztott fejezet: 4", firstChapterBox.getTooltip().getText());
             assertEquals(3, firstFromVerseBox.getItems().size());
             assertNull(firstFromVerseBox.getItems().get(0));
@@ -189,7 +193,7 @@ class MainViewFactoryTest {
             assertEquals(4, firstToVerseBox.getItems().get(1));
             assertEquals(5, firstToVerseBox.getItems().get(2));
 
-            firstFromVerseBox.setValue(4);
+            firstToVerseBox.setValue(4);
             assertEquals(4, firstToVerseBox.getValue());
             assertEquals("A(z) 1. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", firstRangeStatus.getText());
             assertFalse(copyButton.isDisable());
@@ -200,18 +204,12 @@ class MainViewFactoryTest {
             assertEquals("A(z) 1. szakaszhoz válassz fejezetet.", firstRangeStatus.getText());
 
             firstChapterBox.setValue(4);
-            firstFromVerseBox.setValue(4);
+            firstToVerseBox.setValue(4);
             assertEquals("A(z) 1. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", firstRangeStatus.getText());
             assertFalse(copyButton.isDisable());
             assertFalse(firstRangeCopyButton.isDisable());
-            assertEquals("1. szakasz — 1Mózes 4:4", assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText());
-
-            VBox firstVersePreviewRow = assertInstanceOf(VBox.class, versePreviewBox.getChildren().get(1));
-            Label firstVerseReferenceLabel = assertInstanceOf(Label.class, firstVersePreviewRow.getChildren().getFirst());
-            Label firstVerseTextLabel = assertInstanceOf(Label.class, firstVersePreviewRow.getChildren().get(1));
-
-            assertEquals("1Mózes 4:4", firstVerseReferenceLabel.getText());
-            assertEquals("Ábel is vitt elsőszülött juhai közül.", firstVerseTextLabel.getText());
+            assertEquals("1Mózes 4:4", assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText());
+            assertEquals(1, versePreviewBox.getChildren().size());
 
             firstRangeCopyButton.fire();
             assertEquals("A kijelölt szakasz a vágólapra került: 1. szakasz — 1Mózes 4:4.", statusLabel.getText());
@@ -261,9 +259,11 @@ class MainViewFactoryTest {
             secondBookBox.setValue("Zsoltárok");
             assertEquals("A(z) 2. szakaszban a könyv kiválasztva. Válassz fejezetet.", secondRangeStatus.getText());
             secondChapterBox.setValue(23);
-            assertEquals("A(z) 2. szakaszhoz válaszd ki a kezdő és záró verset.", secondRangeStatus.getText());
+            assertEquals(1, secondFromVerseBox.getValue());
+            assertEquals(2, secondToVerseBox.getValue());
+            assertEquals("A(z) 2. szakasz kész. Adj hozzá újabbat, vagy kattints a Másolás gombra.", secondRangeStatus.getText());
             secondFromVerseBox.setValue(1);
-            assertEquals(1, secondToVerseBox.getValue());
+            assertEquals(2, secondToVerseBox.getValue());
             secondToVerseBox.setValue(null);
             assertEquals(1, secondToVerseBox.getValue());
             secondToVerseBox.setValue(2);
@@ -272,6 +272,11 @@ class MainViewFactoryTest {
             assertNull(secondFromVerseBox.getValue());
             assertNull(secondToVerseBox.getValue());
             assertEquals("A(z) 2. szakaszhoz válaszd ki a kezdő és záró verset.", secondRangeStatus.getText());
+            secondFromVerseBox.setValue(1);
+            secondFromVerseBox.setValue(null);
+            secondToVerseBox.setValue(null);
+            assertNull(secondFromVerseBox.getValue());
+            assertNull(secondToVerseBox.getValue());
             secondToVerseBox.setValue(2);
             assertEquals("A(z) 2. szakaszhoz válassz kezdő verset, amely nem nagyobb a záró versnél.", secondRangeStatus.getText());
             secondFromVerseBox.setValue(2);
@@ -281,7 +286,9 @@ class MainViewFactoryTest {
             assertEquals(2, secondToVerseBox.getValue());
             assertFalse(copyButton.isDisable());
             assertFalse(secondRangeCopyButton.isDisable());
-            assertEquals(5, versePreviewBox.getChildren().size());
+            assertEquals(2, versePreviewBox.getChildren().size());
+            assertEquals("1Mózes 4:4", assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText());
+            assertEquals("Zsoltárok 23:1-2", assertInstanceOf(Label.class, versePreviewBox.getChildren().get(1)).getText());
 
             secondResetButton.fire();
             assertNull(secondBookBox.getValue());
@@ -456,7 +463,7 @@ class MainViewFactoryTest {
             verify(translationHelpAlert).showAndWait();
             verify(rangeHelpAlert).showAndWait();
 
-            assertEquals("1. szakasz — 1Mózes 4:4", assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText());
+            assertEquals("1Mózes 4:4", assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText());
 
             translationBox.setValue(null);
             assertEquals("Revideált Károli", translationBox.getValue());
@@ -602,7 +609,7 @@ class MainViewFactoryTest {
 
             assertEquals(1, versePreviewBox.getChildren().size());
             assertEquals(
-                    "A kijelölt szakaszokhoz jelenleg nem található megjeleníthető vers.",
+                    "Üres találat 1:1",
                     assertInstanceOf(Label.class, versePreviewBox.getChildren().getFirst()).getText()
             );
 
@@ -685,6 +692,8 @@ class MainViewFactoryTest {
         assertTrue(mainViewFactory.rangeHelpContentText().contains("↺ gomb"));
         assertTrue(mainViewFactory.rangeHelpContentText().contains("automatikusan ugyanarra a versre állítja"));
         assertTrue(mainViewFactory.rangeHelpContentText().contains("buboréksúgóban"));
+        assertTrue(mainViewFactory.rangeHelpContentText().contains("teljes fejezet"));
+        assertTrue(mainViewFactory.translationHelpContentText().contains("legtöbbször másolt fordítás"));
         assertEquals("A(z) 3. szakaszhoz válaszd ki a kezdő és záró verset.", MainViewFactory.rangeSelectionStatus(3, null, null));
         assertEquals("A(z) 3. szakaszhoz válassz kezdő verset, amely nem nagyobb a záró versnél.", MainViewFactory.rangeSelectionStatus(3, null, 5));
         assertEquals("A(z) 3. szakaszhoz válassz záró verset, amely nem kisebb a kezdő versnél.", MainViewFactory.rangeSelectionStatus(3, 5, null));
@@ -831,7 +840,7 @@ class MainViewFactoryTest {
     }
 
     @Test
-    void createRootClearsInvalidVerseSelectionsWhenChapterChanges() {
+    void createRootSelectsWholeChapterWhenChapterChanges() {
         UiSessionService uiSessionService = mock(UiSessionService.class);
         when(uiSessionService.loadSession()).thenReturn(Optional.empty());
         MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
@@ -863,8 +872,8 @@ class MainViewFactoryTest {
 
             chapterBox.setValue(5);
 
-            assertNull(fromVerseBox.getValue());
-            assertNull(toVerseBox.getValue());
+            assertEquals(1, fromVerseBox.getValue());
+            assertEquals(2, toVerseBox.getValue());
             return null;
         });
     }
@@ -1220,6 +1229,133 @@ class MainViewFactoryTest {
                     stage.setScene(new Scene(mainViewFactory.createRoot(), 1180, 760));
                     stage.show();
                 });
+            } finally {
+                stage.close();
+            }
+            return null;
+        });
+    }
+
+    @Test
+    void createRootPreselectsMostUsedTranslationAndRecordsCopies() {
+        UiSessionService uiSessionService = mock(UiSessionService.class);
+        when(uiSessionService.loadSession()).thenReturn(Optional.empty());
+        List<String> recordedTranslations = new ArrayList<>();
+        TranslationUsageService translationUsageService = new TranslationUsageService() {
+            @Override
+            public void recordUse(String translation) {
+                recordedTranslations.add(translation);
+            }
+
+            @Override
+            public Optional<String> preferredTranslation() {
+                return Optional.of("Károli");
+            }
+        };
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of(
+                new VerseRow("Revideált Károli", "1. Mózes", 1, 1, "Kezdetben"),
+                new VerseRow("Károli", "János", 3, 16, "Mert úgy szerette Isten a világot")
+        )), uiSessionService, translationUsageService);
+
+        FxTestSupport.runOnFxThread(() -> {
+            Parent parent = mainViewFactory.createRoot();
+            BorderPane root = (BorderPane) parent;
+            VBox mainContent = mainContent(root);
+            HBox translationRow = (HBox) mainContent.getChildren().get(3);
+            VBox rangeSelectionsBox = (VBox) mainContent.getChildren().get(4);
+            ComboBox<String> translationBox = comboBox(translationRow, 0);
+            Button copyButton = (Button) translationRow.getChildren().get(3);
+            HBox rangeRow = (HBox) rangeSelectionsBox.getChildren().getFirst();
+            ComboBox<String> bookBox = comboBox(rangeRow, 0);
+            ComboBox<Integer> chapterBox = comboBox(rangeRow, 1);
+            Button rangeCopyButton = (Button) rangeRow.getChildren().get(7);
+
+            assertNull(translationBox.getItems().get(0));
+            assertEquals("Revideált Károli", translationBox.getItems().get(1));
+            assertEquals("Károli", translationBox.getItems().get(2));
+            assertEquals("Károli", translationBox.getValue());
+            assertEquals("A fordítás kiválasztva. Válassz könyvet a szakaszokhoz.", ((Label) mainContent.getChildren().get(6)).getText());
+
+            bookBox.setValue("János");
+            chapterBox.setValue(3);
+            assertEquals(16, comboBox(rangeRow, 2).getValue());
+            assertEquals(16, comboBox(rangeRow, 3).getValue());
+            assertFalse(copyButton.isDisable());
+
+            rangeCopyButton.fire();
+            copyButton.fire();
+            assertEquals(List.of("Károli", "Károli"), recordedTranslations);
+            invokePrivate(
+                    mainViewFactory,
+                    "applyPreferredTranslationIfNeeded",
+                    new Class<?>[]{ComboBox.class, Button.class, List.class, Label.class, Runnable.class},
+                    translationBox,
+                    new Button(),
+                    List.of(),
+                    new Label(),
+                    (Runnable) () -> {
+                    }
+            );
+            assertEquals("Károli", translationBox.getValue());
+            return null;
+        });
+    }
+
+    @Test
+    void viewportStaysAnchoredOnTheEditedRangeInsteadOfThePageBottom() {
+        MainViewFactory mainViewFactory = new MainViewFactory(new VerseBrowserService(List.of()));
+
+        FxTestSupport.runOnFxThread(() -> {
+            ScrollPane emptyScrollPane = new ScrollPane();
+            assertEquals(0, mainViewFactory.captureScrollPixels(emptyScrollPane));
+            mainViewFactory.restoreScrollPixels(emptyScrollPane, 12);
+            mainViewFactory.applyViewportAnchor(emptyScrollPane, new Label("nincs tartalom"));
+
+            VBox content = new VBox();
+            ScrollPane scrollPane = new ScrollPane();
+            Label anchor = new Label("szerkesztett szakasz");
+            anchor.setMinHeight(40);
+            content.getChildren().add(anchor);
+            for (int index = 0; index < 30; index++) {
+                Label filler = new Label("további tartalom " + index);
+                filler.setMinHeight(40);
+                content.getChildren().add(filler);
+            }
+            scrollPane.setContent(content);
+            scrollPane.setPrefViewportHeight(120);
+            scrollPane.setPrefViewportWidth(280);
+            Stage stage = new Stage();
+            try {
+                stage.setScene(new Scene(scrollPane, 300, 140));
+                stage.show();
+                scrollPane.applyCss();
+                scrollPane.layout();
+
+                scrollPane.setVvalue(0);
+                mainViewFactory.applyViewportAnchor(scrollPane, anchor);
+                assertEquals(0, scrollPane.getVvalue());
+
+                scrollPane.setVvalue(1);
+                mainViewFactory.applyViewportAnchor(scrollPane, anchor);
+                assertTrue(scrollPane.getVvalue() < 0.25);
+
+                Label shortContent = new Label("rövid");
+                VBox shortBox = new VBox(shortContent);
+                ScrollPane shortScrollPane = new ScrollPane(shortBox);
+                stage.setScene(new Scene(shortScrollPane, 300, 400));
+                shortScrollPane.applyCss();
+                shortScrollPane.layout();
+                shortScrollPane.setVvalue(1);
+                mainViewFactory.applyViewportAnchor(shortScrollPane, shortContent);
+                assertEquals(0, shortScrollPane.getVvalue());
+                mainViewFactory.restoreScrollPixels(shortScrollPane, 40);
+                assertEquals(0, shortScrollPane.getVvalue());
+
+                scrollPane.setVvalue(0.4);
+                double capturedPixels = mainViewFactory.captureScrollPixels(scrollPane);
+                assertTrue(capturedPixels > 0);
+                mainViewFactory.restoreScrollPixels(scrollPane, capturedPixels);
+                assertEquals(0.4, scrollPane.getVvalue(), 0.02);
             } finally {
                 stage.close();
             }

@@ -1,0 +1,25 @@
+{
+  "commitTags": [
+    {"tag": "ui", "paths": ["app/src/main/java"], "keywords": ["javafx", "ablak", "ui", "nézet", "nezet"]},
+    {"tag": "scraper", "paths": ["scraper/"], "keywords": ["scrape", "selenium", "jsoup"]},
+    {"tag": "database", "paths": [".db", "sqlite"], "keywords": ["sqlite", "jdbc", "adatbázis", "adatbazis"]},
+    {"tag": "docs", "paths": [".md"], "keywords": ["readme", "docs", "útmutató", "utmutato"]},
+    {"tag": "test", "paths": ["/test/"], "keywords": ["test", "teszt"]},
+    {"tag": "build", "paths": ["pom.xml", ".github"], "keywords": ["maven", "build", "ci"]},
+    {"tag": "fix", "keywords": ["fix", "bug", "javít", "javit"]}
+  ],
+  "translations": [
+    "Revideált Károli",
+    "Károli Gáspár",
+    "Károli",
+    "Revideált Új Fordítás",
+    "RÚF",
+    "Egyszerű fordítás",
+    "EFO",
+    "KJV"
+  ],
+  "books": {
+    "ot": ["Genesis", "1Mózes", "1Mozes", "Exodus", "Psalms", "Zsoltárok", "Zsoltarok", "Isaiah", "Ézsaiás"],
+    "nt": ["Matthew", "Máté", "Mate", "John", "János", "Janos", "Romans", "Róma", "Roma", "Revelation", "Jelenések"]
+  }
+}
