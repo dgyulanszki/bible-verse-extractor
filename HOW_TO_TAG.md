@@ -1,64 +1,32 @@
-# How to tag entries
+# Tag a version
 
-`scripts/tag_entries.cmd` scans git history and exported verse files, assigns category tags, and writes a JSON report. It does not modify commits. Local git tags are created only with `-ApplyGitTags`, and they are never pushed.
+## Step 1
 
-## Prerequisites
+Double-click this file:
 
-The script is Windows-native. A normal Windows 10 or Windows 11 install already includes everything it needs.
+`scripts\tag_entries.cmd`
 
-| Requirement | Details |
-| --- | --- |
-| PowerShell | 5.1 or newer, included with Windows. No module install. |
-| Python | Not used. |
-| pip packages | None. |
-| Environment variables | None. |
-| Git hooks | None. |
-| Git | Optional. Used only for commit history and `-ApplyGitTags`. Export tagging works without Git. |
-
-No installation step is required. From the repository root:
+Or, in the project folder, run:
 
 ```powershell
-.\scripts\tag_entries.cmd -Source git -Limit 5
+.\scripts\tag_entries.cmd
 ```
 
-`tag_entries.cmd` starts PowerShell with `-ExecutionPolicy Bypass` for that process only. You do not need to change the machine execution policy.
+## Step 2
 
-## Run a report
+You do not type a version. The script reads it from `pom.xml`.
 
-Commit history:
+Right now that version is `1.3.1-SNAPSHOT`. The script uses `1.3.1`.
 
-```powershell
-.\scripts\tag_entries.cmd -Source git -Limit 50
-```
+## Step 3
 
-Exported `.txt`, `.md`, or `.csv` files:
+The script does the rest:
 
-```powershell
-.\scripts\tag_entries.cmd -Source exports -Exports .\exports -Output .\tags-report.json
-```
+- It creates the tag `bible-verse-extractor-1.3.1`.
+- It uploads that tag.
+- It changes the project version to `1.3.2-SNAPSHOT`.
+- It saves that change with the message `Bump version to 1.3.2-SNAPSHOT`.
 
-Both:
+Press any key to close the window.
 
-```powershell
-.\scripts\tag_entries.cmd -Source all -Exports .\exports -Output .\tags-report.json
-```
-
-Each entry has an `id`, a `kind` (`commit` or `export`), a title, and a `tags` list. Commit tags look like `ui` or `fix`. Export tags look like `translation:karoli`, `testament:nt`, `book:john`, and `reference:John 3:16-18`.
-
-## Customize the rules
-
-Edit `scripts/tag-rules.json`, or pass another file with `-Rules`. A rule matches when a keyword is in the commit subject or a path marker is in the changed files.
-
-```powershell
-.\scripts\tag_entries.cmd -Source all -Exports .\exports -Rules .\scripts\tag-rules.json -Output .\tags-report.json
-```
-
-## Optional local git tags
-
-This creates one annotated tag per summary category, named `topic/<tag>`, pointing at `HEAD`. Git must already be on `PATH`.
-
-```powershell
-.\scripts\tag_entries.cmd -Source git -ApplyGitTags
-```
-
-Add `-Force` to move an existing `topic/...` tag. Review them with `git tag -l "topic/*"`. Delete one with `git tag -d topic/ui`.
+Save any other work before you run it. If the tag already exists, the script stops and leaves the project unchanged.
